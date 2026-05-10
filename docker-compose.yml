@@ -1,0 +1,40 @@
+# docker-compose.yml
+services:
+  mcp-server:
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile
+    container_name: mcp-code-reviewer
+    ports:
+      - "3001:3001"
+    env_file:
+      - ./mcp-server/.env
+    volumes:
+      - ./mcp-server:/app
+      - /app/node_modules
+    networks:
+      - mcp-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mcp-dashboard
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./frontend/.env.local
+    environment:
+      - NEXT_PUBLIC_MCP_SERVER_URL=http://mcp-server:3001
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - mcp-server
+    networks:
+      - mcp-network
+
+networks:
+  mcp-network:
+    driver: bridge
