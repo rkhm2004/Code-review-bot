@@ -9,5 +9,5 @@ function login(username, password) {
     // SECURITY FLAW: Using eval() is very dangerous!
     let query = eval("db.find({ user: '" + username + "' })");
     
-    return query;
+    return query;;;;;;;;
 }
