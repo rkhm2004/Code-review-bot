@@ -1,22 +1,27 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { EventEmitter } from 'events';
+import 'dotenv/config';
 
 // ============================================================================
-// 1. INITIALIZE SERVER & EVENT STREAM (The Walkie-Talkie)
+// GLOBAL CONFIGURATION & STATE
 // ============================================================================
 const app = Fastify();
 const messageBus = new EventEmitter();
 
-// Allow the Next.js frontend on port 3000 to talk to this backend
-app.register(cors, {
-  origin: true
-});
+let currentDiffData = "";
+let cleanAiPatchedCode = "";
+
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN || "";
+const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
+
+// Enable CORS
+app.register(cors, { origin: true });
 
 // ============================================================================
-// 2. SERVER-SENT EVENTS (SSE) ENDPOINT
+// SERVER-SENT EVENTS (SSE)
 // ============================================================================
-app.get('/sse', (req: any, res: any) => {
+app.get('/sse', async (req: any, res: any) => {
   res.raw.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -38,181 +43,197 @@ app.get('/sse', (req: any, res: any) => {
 });
 
 // ============================================================================
-// 3. THE BULLETPROOF GITHUB FETCHER
+// FETCH PULL REQUEST DIFF
 // ============================================================================
 app.get('/diff', async (req: any, res: any) => {
   try {
     const { owner, repo, pull_number } = req.query;
-    
+
     if (!owner || !repo || !pull_number) {
-      return res.status(400).send({ error: "Missing required parameters" });
+      return res.status(400).send({
+        error: 'Missing required parameters'
+      });
     }
 
-    console.log(`\n🔍 Fetching PR Diff for: ${owner}/${repo} PR #${pull_number}`);
+    console.log(
+      `🔍 Fetching PR diff for ${owner}/${repo} #${pull_number}`
+    );
 
-    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pull_number}`, {
-      headers: {
-        'Accept': 'application/vnd.github.v3.diff',
-        'User-Agent': 'Sentinel-AI-Review-Bot'
+    const response = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/pulls/${pull_number}`,
+      {
+        headers: {
+          Accept: 'application/vnd.github.v3.diff',
+          'User-Agent': 'Sentinel-AI-Review-Bot',
+          Authorization: `Bearer ${GITHUB_TOKEN}`
+        }
       }
-    });
+    );
 
     if (!response.ok) {
-      throw new Error(`GitHub API returned status ${response.status}: ${response.statusText}`);
+      throw new Error(
+        `GitHub API failed with status ${response.status}`
+      );
     }
 
     const diffData = await response.text();
-    console.log(`✅ Successfully downloaded diff (${diffData.length} characters)`);
-    
-    return res.send({ diff: diffData });
+
+    currentDiffData = diffData;
+
+    console.log(
+      `✅ Diff downloaded successfully (${diffData.length} bytes)`
+    );
+
+    return res.send({
+      diff: diffData
+    });
 
   } catch (error: any) {
-    console.error('❌ FAILED TO FETCH DIFF:', error.message);
-    return res.status(500).send({ error: "Failed to fetch from GitHub", details: error.message });
+
+    console.error(
+      '❌ FAILED TO FETCH DIFF:',
+      error.message
+    );
+
+    return res.status(500).send({
+      error: 'Failed to fetch PR diff',
+      details: error.message
+    });
   }
 });
 
 // ============================================================================
-// 4. THE AI MCP TOOL HANDLER
+// GROQ AI REVIEW ENDPOINT
 // ============================================================================
 app.post('/message', async (req: any, res: any) => {
+
   const body = req.body;
-  
-  if (body?.method === 'tools/call' && body?.params?.name === 'get_pr_diff') {
-    console.log("🤖 Agent received request to review code...");
-    
-    setTimeout(() => {
-      const simulatedAiReview = {
-        jsonrpc: "2.0",
-        id: body.id,
-        result: {
-          content: [
-            {
-              type: "text",
-              text: "### Sentinel AI Review Complete\n\nI found a few issues in the provided diff.\n\n```javascript\n// Secure version of the code\nfunction secureAuth(user, pass) {\n  // Fixed hardcoded credentials and removed eval()\n  console.log('Secure login process initialized.');\n  return true;\n}\n```"
-            }
-          ]
+
+  if (
+    body?.method === 'tools/call' &&
+    body?.params?.name === 'get_pr_diff'
+  ) {
+
+    console.log('🤖 Running Groq AI security audit...');
+
+    res.send({
+      status: 'processing'
+    });
+
+    try {
+
+      if (!currentDiffData) {
+        throw new Error(
+          'No pull request diff available. Load a PR first.'
+        );
+      }
+
+      const groqResponse = await fetch(
+        'https://api.groq.com/openai/v1/chat/completions',
+        {
+          method: 'POST',
+
+          headers: {
+            Authorization: `Bearer ${GROQ_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+
+            messages: [
+              {
+                role: 'system',
+                content:
+                  'You are an elite DevSecOps AI agent. Analyze the provided git diff for vulnerabilities including SQL injection, command injection, insecure dependencies, cleartext logging, and hardcoded secrets. Then generate a secure production-ready fixed version.'
+              },
+
+              {
+                role: 'user',
+                content:
+                  `Analyze this pull request diff:\n\n${currentDiffData}`
+              }
+            ],
+
+            temperature: 0.2
+          })
         }
-      };
-      
-      messageBus.emit('ai_response', simulatedAiReview);
-      console.log("✅ Agent sent review back to UI");
-    }, 2000);
-    
-    return res.send({ status: "processing" });
+      );
+
+      if (!groqResponse.ok) {
+
+        const errPayload = await groqResponse.json();
+
+        throw new Error(
+          errPayload.error?.message || 'Groq API failed'
+        );
+      }
+
+      const groqData = await groqResponse.json();
+
+      const aiMarkdownOutput =
+        groqData.choices?.[0]?.message?.content || "";
+
+      // ============================================================================
+      // EXTRACT CODE BLOCK
+      // ============================================================================
+
+      const codeBlockRegex = /```(?:\w+)?\n([\s\S]*?)```/;
+
+      const match = aiMarkdownOutput.match(codeBlockRegex);
+
+      if (match && match[1]) {
+        cleanAiPatchedCode = match[1].trim();
+      } else {
+        cleanAiPatchedCode = aiMarkdownOutput;
+      }
+
+      console.log('✅ AI review completed successfully');
+
+      // Send live SSE update
+      messageBus.emit('ai_response', {
+        type: 'review_complete',
+        content: aiMarkdownOutput,
+        patchedCode: cleanAiPatchedCode
+      });
+
+    } catch (error: any) {
+
+      console.error(
+        '❌ GROQ REVIEW FAILED:',
+        error.message
+      );
+
+      messageBus.emit('ai_response', {
+        type: 'error',
+        message: error.message
+      });
+    }
   }
 
-  return res.status(404).send({ error: "Tool not found" });
+  return;
 });
 
 // ============================================================================
-// 5. AUTONOMOUS CODE PATCH & MERGE ENDPOINT
+// START SERVER
 // ============================================================================
-app.post('/approve', async (req: any, res: any) => {
-  // 🚨 PASTE YOUR REAL GITHUB TOKEN HERE 🚨
-  const token = process.env.GITHUB_TOKEN; 
-  
+const startServer = async () => {
+
   try {
-    const { owner, repo, pull_number } = req.body;
-    
-    if (!owner || !repo || !pull_number) {
-      return res.status(400).send({ error: "Missing PR details" });
-    }
 
-    console.log(`\n🤖 STEP 1: Fetching PR metadata to find source branch...`);
-    const prResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pull_number}`, {
-      headers: { 'Authorization': `Bearer ${GITHUB_TOKEN}` }
-    });
-    if (!prResponse.ok) throw new Error("Failed to fetch PR branch details from GitHub.");
-    const prData = await prResponse.json();
-    const branchName = prData.head.ref; 
-    console.log(`📌 Source branch identified as: [${branchName}]`);
-
-    // The clean, secure code written by Sentinel AI
-    const secureCodeContent = `// Secure version of the code automatically generated by Sentinel AI
-function secureAuth(user, pass) {
-  // Fixed hardcoded master credentials vulnerability
-  // Removed dangerous eval() execution context
-  console.log('Secure login process initialized.');
-  return true;
-}
-module.exports = { secureAuth };
-`;
-
-    console.log(`🤖 STEP 2: Fetching file SHA for bad_auth.js on branch [${branchName}]...`);
-    const fileUrl = `https://api.github.com/repos/${owner}/${repo}/contents/bad_auth.js?ref=${branchName}`;
-    const fileCheck = await fetch(fileUrl, {
-      headers: { 'Authorization': `Bearer ${GITHUB_TOKEN}` }
-    });
-    
-    let fileSha = "";
-    if (fileCheck.ok) {
-      const fileData = await fileCheck.json();
-      fileSha = fileData.sha;
-    }
-
-    console.log(`🤖 STEP 3: Committing AI secure patch directly to branch [${branchName}]...`);
-    const commitUrl = `https://api.github.com/repos/${owner}/${repo}/contents/bad_auth.js`;
-    const commitResponse = await fetch(commitUrl, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${GITHUB_TOKEN}`,
-        'Accept': 'application/vnd.github.v3+json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        message: "🛡️ Sentinel AI: Automatically patched security vulnerabilities",
-        content: Buffer.from(secureCodeContent).toString('base64'),
-        branch: branchName,
-        sha: fileSha
-      })
+    await app.listen({
+      port: 3001,
+      host: '0.0.0.0'
     });
 
-    if (!commitResponse.ok) {
-      const commitErr = await commitResponse.json();
-      throw new Error(`Failed to commit patch: ${commitErr.message}`);
-    }
-    console.log(`✅ Patch successfully committed to branch!`);
+    console.log('🚀 MCP Server running on port 3001');
 
-    console.log(`🤖 STEP 4: Merging fully patched branch into main...`);
-    const mergeResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pull_number}/merge`, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${GITHUB_TOKEN}`,
-        'Accept': 'application/vnd.github.v3+json'
-      },
-      body: JSON.stringify({
-        commit_title: `🛡️ Sentinel AI: Autonomously patched and merged PR #${pull_number}`,
-        merge_method: 'merge'
-      })
-    });
+  } catch (error) {
 
-    const mergeData = await mergeResponse.json();
-    if (!mergeResponse.ok) throw new Error(mergeData.message || "GitHub rejected the merge.");
+    console.error('❌ SERVER FAILED TO START:', error);
 
-    console.log("✅ GitHub Merge Success!");
-    return res.send({ success: true, message: "Sentinel AI successfully patched your files and merged the clean code to main!" });
-
-  } catch (error: any) {
-    console.error('❌ AGENT METHOD FAILED:', error.message);
-    return res.status(500).send({ error: error.message });
-  }
-});
-
-// ============================================================================
-// 6. THE LOUD & SAFE STARTUP SCRIPT
-// ============================================================================
-const start = async () => {
-  try {
-    await app.listen({ port: 3001, host: '0.0.0.0' });
-    console.log('\n=========================================');
-    console.log('🚀 SENTINEL AI BACKEND IS ALIVE NATIVELY!');
-    console.log('📡 Listening on http://localhost:3001');
-    console.log('=========================================\n');
-  } catch (err) {
-    console.error('🔥 SERVER CRASHED ON STARTUP:', err);
     process.exit(1);
   }
 };
 
-start();
+startServer();
