@@ -1,23 +1,16 @@
-# frontend/Dockerfile
 FROM node:20-alpine
 
-# Set the working directory inside the container
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json* ./
-
 # Install dependencies
+COPY package*.json ./
 RUN npm install --legacy-peer-deps
 
-# Copy the rest of the source code
+# Copy the rest of the frontend code
 COPY . .
 
-# Expose the standard Next.js port (3000)
+# Expose the Next.js port
 EXPOSE 3000
 
-# Disable Next.js telemetry for privacy
-ENV NEXT_TELEMETRY_DISABLED 1
-
-# Start the Next.js development server with hot-reloading
+# Start Next.js in dev mode
 CMD ["npm", "run", "dev"]

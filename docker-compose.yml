@@ -1,40 +1,25 @@
-# docker-compose.yml
 services:
-  mcp-server:
-    build:
+  backend:
+    build: 
       context: ./mcp-server
-      dockerfile: Dockerfile
-    container_name: mcp-code-reviewer
+    container_name: sentinel-backend
     ports:
       - "3001:3001"
-    env_file:
-      - ./mcp-server/.env
-    volumes:
-      - ./mcp-server:/app
-      - /app/node_modules
-    networks:
-      - mcp-network
+    # Comment out these volumes so Docker is forced to read the new index.ts!
+    # volumes:
+    #   - ./mcp-server:/app
+    #   - /app/node_modules
+    environment:
+      - NODE_ENV=development
 
   frontend:
-    build:
+    build: 
       context: ./frontend
-      dockerfile: Dockerfile
-    container_name: mcp-dashboard
+    container_name: sentinel-frontend
     ports:
       - "3000:3000"
-    env_file:
-      - ./frontend/.env.local
+    # volumes:
+    #   - ./frontend:/app
+    #   - /app/node_modules
     environment:
-      - NEXT_PUBLIC_MCP_SERVER_URL=http://mcp-server:3001
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
-    depends_on:
-      - mcp-server
-    networks:
-      - mcp-network
-
-networks:
-  mcp-network:
-    driver: bridge
+      - NODE_ENV=development
