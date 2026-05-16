@@ -130,7 +130,7 @@ export default function Home() {
             </div>
             
             {/* The Action Buttons at the bottom */}
-            <ReviewActions />
+            <ReviewActions url={url} />
           </div>
         )}
 

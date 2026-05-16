@@ -24,10 +24,8 @@ app.get('/sse', (req: any, res: any) => {
     'Access-Control-Allow-Origin': '*'
   });
 
-  // Tell the frontend where to send its AI tool requests
   res.raw.write(`event: endpoint\ndata: /message\n\n`);
 
-  // Listen for AI responses and send them to the frontend
   const onMessage = (data: any) => {
     res.raw.write(`event: message\ndata: ${JSON.stringify(data)}\n\n`);
   };
@@ -38,7 +36,6 @@ app.get('/sse', (req: any, res: any) => {
     messageBus.off('ai_response', onMessage);
   });
 });
-
 
 // ============================================================================
 // 3. THE BULLETPROOF GITHUB FETCHER
@@ -56,8 +53,7 @@ app.get('/diff', async (req: any, res: any) => {
     const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pull_number}`, {
       headers: {
         'Accept': 'application/vnd.github.v3.diff',
-        'User-Agent': 'Sentinel-AI-Review-Bot',
-        // 'Authorization': `Bearer ${process.env.GITHUB_TOKEN}` // Uncomment if using a private repo!
+        'User-Agent': 'Sentinel-AI-Review-Bot'
       }
     });
 
@@ -72,13 +68,9 @@ app.get('/diff', async (req: any, res: any) => {
 
   } catch (error: any) {
     console.error('❌ FAILED TO FETCH DIFF:', error.message);
-    return res.status(500).send({ 
-      error: "Failed to fetch from GitHub", 
-      details: error.message 
-    });
+    return res.status(500).send({ error: "Failed to fetch from GitHub", details: error.message });
   }
 });
-
 
 // ============================================================================
 // 4. THE AI MCP TOOL HANDLER
@@ -89,7 +81,6 @@ app.post('/message', async (req: any, res: any) => {
   if (body?.method === 'tools/call' && body?.params?.name === 'get_pr_diff') {
     console.log("🤖 Agent received request to review code...");
     
-    // Simulate AI processing time (Replace this with your actual Groq/AI call later!)
     setTimeout(() => {
       const simulatedAiReview = {
         jsonrpc: "2.0",
@@ -104,7 +95,6 @@ app.post('/message', async (req: any, res: any) => {
         }
       };
       
-      // Emit the response back through the Walkie-Talkie to the frontend
       messageBus.emit('ai_response', simulatedAiReview);
       console.log("✅ Agent sent review back to UI");
     }, 2000);
@@ -115,27 +105,59 @@ app.post('/message', async (req: any, res: any) => {
   return res.status(404).send({ error: "Tool not found" });
 });
 
-
 // ============================================================================
-// 5. GITHUB APPROVE & PUSH MOCK ENDPOINT
+// 5. GITHUB REAL MERGE ENDPOINT
 // ============================================================================
 app.post('/approve', async (req: any, res: any) => {
-  console.log("🚀 Received Approval! Pushing changes to GitHub...");
-  // You can add your actual GitHub octokit push logic here later
-  return res.send({ success: true, message: "Code successfully pushed to repository." });
-});
+  // 🚨 PASTE YOUR REAL GITHUB TOKEN HERE 🚨
+  const GITHUB_TOKEN = ""; 
+  
+  try {
+    const { owner, repo, pull_number } = req.body;
+    
+    if (!owner || !repo || !pull_number) {
+      return res.status(400).send({ error: "Missing PR details" });
+    }
 
+    console.log(`🚀 Approving & Merging PR #${pull_number} for ${owner}/${repo}...`);
+
+    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pull_number}/merge`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'X-GitHub-Api-Version': '2022-11-28'
+      },
+      body: JSON.stringify({
+        commit_title: `🛡️ Sentinel AI: Merged PR #${pull_number} securely.`,
+        merge_method: 'merge'
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "GitHub rejected the merge.");
+    }
+
+    console.log("✅ GitHub Merge Success:", data.message);
+    return res.send({ success: true, message: data.message });
+
+  } catch (error: any) {
+    console.error('❌ FAILED TO MERGE:', error.message);
+    return res.status(500).send({ error: error.message });
+  }
+});
 
 // ============================================================================
 // 6. THE LOUD & SAFE STARTUP SCRIPT
 // ============================================================================
 const start = async () => {
   try {
-    // 0.0.0.0 is MANDATORY for Docker!
     await app.listen({ port: 3001, host: '0.0.0.0' });
     console.log('\n=========================================');
-    console.log('🚀 SENTINEL AI BACKEND IS ALIVE!');
-    console.log('📡 Listening on http://0.0.0.0:3001');
+    console.log('🚀 SENTINEL AI BACKEND IS ALIVE NATIVELY!');
+    console.log('📡 Listening on http://localhost:3001');
     console.log('=========================================\n');
   } catch (err) {
     console.error('🔥 SERVER CRASHED ON STARTUP:', err);
