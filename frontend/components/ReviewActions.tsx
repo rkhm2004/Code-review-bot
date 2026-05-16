@@ -1,17 +1,27 @@
-'use client';
-
-import { ShieldCheck, MessageSquare, XCircle } from 'lucide-react';
+"use client";
 
 export default function ReviewActions() {
+  const handleApprove = () => {
+    alert("PR Approved! Triggering backend push to GitHub...");
+  };
+
+  const handleReject = () => {
+    alert("Issues found. Sending comments back to GitHub PR...");
+  };
+
   return (
-    <div className="flex items-center gap-2">
-      <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/20 text-xs font-bold transition-all">
-        <ShieldCheck size={14} />
-        Approve
-      </button>
-      <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-bold transition-all">
-        <XCircle size={14} />
+    <div className="mt-8 flex justify-end gap-4 border-t border-gray-800 pt-6">
+      <button 
+        onClick={handleReject}
+        className="px-6 py-2 bg-transparent border border-red-500 text-red-500 hover:bg-red-500/10 font-bold rounded-lg transition-colors"
+      >
         Request Changes
+      </button>
+      <button 
+        onClick={handleApprove}
+        className="px-6 py-2 bg-green-600 hover:bg-green-500 text-white font-bold rounded-lg transition-colors shadow-lg shadow-green-900/20"
+      >
+        Approve & Merge
       </button>
     </div>
   );

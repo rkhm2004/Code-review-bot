@@ -1,8 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-// Import your awesome neural network background component!
-import AnimatedBackground from "@/components/AnimatedBackground"; 
+// Import all your beautiful components!
+import AnimatedBackground from "@/components/AnimatedBackground";
+import DiffViewer from "@/components/DiffViewer";
+import ReviewComments from "@/components/ReviewComments";
+import ReviewActions from "@/components/ReviewActions";
 
 export default function Home() {
   const [url, setUrl] = useState("");
@@ -15,36 +18,31 @@ export default function Home() {
   // 1. THE WALKIE-TALKIE (SSE) LISTENER
   // ============================================================================
   useEffect(() => {
-    // Connect to the backend's Walkie-Talkie stream
     const eventSource = new EventSource("http://localhost:3001/sse");
 
     eventSource.addEventListener("message", (event) => {
       try {
         const data = JSON.parse(event.data);
-        // If the AI sends a review back, update the UI!
         if (data.result && data.result.content && data.result.content.length > 0) {
           setAiReview(data.result.content[0].text);
-          setLoading(false); // Stop the loading spinner
+          setLoading(false);
         }
       } catch (err) {
         console.error("Error parsing AI message:", err);
       }
     });
 
-    return () => {
-      eventSource.close();
-    };
+    return () => eventSource.close();
   }, []);
 
   // ============================================================================
-  // 2. THE BULLETPROOF ANALYZE FUNCTION
+  // 2. THE ANALYZE FUNCTION
   // ============================================================================
   const analyzePR = async () => {
     setError("");
     setDiffCode("");
     setAiReview("");
 
-    // 🛡️ The Bulletproof Regex Parser
     const cleanUrl = url.trim();
     const match = cleanUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
 
@@ -57,29 +55,19 @@ export default function Home() {
     setLoading(true);
 
     try {
-      // Step A: Ask the backend to download the GitHub code
       const diffResponse = await fetch(`http://localhost:3001/diff?owner=${owner}&repo=${repo}&pull_number=${pull_number}`);
+      if (!diffResponse.ok) throw new Error("Backend failed to fetch the Pull Request code.");
       
-      if (!diffResponse.ok) {
-        throw new Error("Backend failed to fetch the Pull Request code.");
-      }
-
       const diffData = await diffResponse.json();
       setDiffCode(diffData.diff);
 
-      // Step B: Tell the AI Agent to start reviewing the code
       const aiResponse = await fetch("http://localhost:3001/message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          method: "tools/call",
-          params: { name: "get_pr_diff" }
-        })
+        body: JSON.stringify({ method: "tools/call", params: { name: "get_pr_diff" } })
       });
 
-      if (!aiResponse.ok) {
-        throw new Error("Failed to wake up the AI Agent.");
-      }
+      if (!aiResponse.ok) throw new Error("Failed to wake up the AI Agent.");
 
     } catch (err: any) {
       setError(err.message);
@@ -88,21 +76,21 @@ export default function Home() {
   };
 
   // ============================================================================
-  // 3. THE UI LAYOUT
+  // 3. THE MODULAR UI LAYOUT
   // ============================================================================
   return (
     <div className="relative min-h-screen bg-[#0B1120] text-white font-sans overflow-hidden">
       
-      {/* 🌟 1. THE NEURAL NETWORK ANIMATION (Z-0 so it sits in the back) 🌟 */}
+      {/* Background Animation */}
       <div className="absolute inset-0 z-0 pointer-events-none">
         <AnimatedBackground />
       </div>
 
-      {/* 🌟 2. THE MAIN UI (Z-10 so it sits on top and buttons are clickable!) 🌟 */}
-      <div className="relative z-10 p-8">
+      {/* Main Container */}
+      <div className="relative z-10 p-8 max-w-7xl mx-auto">
         
-        {/* Header Section */}
-        <div className="max-w-4xl mx-auto text-center mt-12 mb-10">
+        {/* Header */}
+        <div className="text-center mt-6 mb-10">
           <h1 className="text-5xl font-extrabold tracking-tight mb-4 text-gray-100">
             Agentic Code Review
           </h1>
@@ -111,8 +99,8 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Input Section */}
-        <div className="max-w-3xl mx-auto bg-[#0F172A] border border-gray-800 rounded-xl p-6 shadow-2xl">
+        {/* Input Field */}
+        <div className="max-w-3xl mx-auto bg-[#0F172A] border border-gray-800 rounded-xl p-6 shadow-2xl mb-12">
           <div className="flex gap-4">
             <input
               type="text"
@@ -130,42 +118,22 @@ export default function Home() {
               {loading ? "Analyzing..." : "Analyze PR"}
             </button>
           </div>
-          
-          {/* Error Message */}
-          {error && (
-            <p className="text-red-400 mt-4 text-sm font-medium">
-              {error}
-            </p>
-          )}
+          {error && <p className="text-red-400 mt-4 text-sm font-medium">{error}</p>}
         </div>
 
-        {/* Results Section */}
+        {/* Results Grid (Powered by your modular components!) */}
         {(diffCode || aiReview) && (
-          <div className="max-w-7xl mx-auto mt-12 grid grid-cols-1 md:grid-cols-2 gap-8">
-            
-            {/* Left Side: Original Code */}
-            <div className="bg-[#0F172A] border border-gray-800 rounded-xl overflow-hidden flex flex-col h-[600px] shadow-2xl">
-              <div className="bg-gray-900 px-4 py-3 border-b border-gray-800 font-mono text-sm text-gray-400">
-                PR Code Diff
-              </div>
-              <div className="p-4 overflow-y-auto flex-1 font-mono text-sm text-gray-300 whitespace-pre-wrap">
-                {diffCode ? diffCode : "Downloading code from GitHub..."}
-              </div>
-            </div>
-
-            {/* Right Side: AI Review */}
-            <div className="bg-[#0F172A] border border-gray-800 rounded-xl overflow-hidden flex flex-col h-[600px] shadow-2xl">
-              <div className="bg-gray-900 px-4 py-3 border-b border-gray-800 font-mono text-sm text-[#0EA5E9] flex justify-between">
-                <span>Sentinel AI Thoughts</span>
-                {loading && <span className="animate-pulse">Agent is typing...</span>}
-              </div>
-              <div className="p-4 overflow-y-auto flex-1 font-sans text-gray-200 whitespace-pre-wrap">
-                {aiReview ? aiReview : "Waiting for AI Agent to begin review..."}
-              </div>
+          <div className="animate-fade-in">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <DiffViewer diffCode={diffCode} />
+              <ReviewComments aiReview={aiReview} loading={loading} />
             </div>
             
+            {/* The Action Buttons at the bottom */}
+            <ReviewActions />
           </div>
         )}
+
       </div>
     </div>
   );
