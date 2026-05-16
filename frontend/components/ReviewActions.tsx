@@ -1,60 +1,59 @@
-"use client";
+'use client';
 
-import { useState } from "react";
+import React, { useState } from 'react';
 
 export default function ReviewActions({ url }: { url: string }) {
-  const [merging, setMerging] = useState(false);
+  const [isMerging, setIsMerging] = useState(false);
 
   const handleApprove = async () => {
-    // 1. Extract the PR details from the URL
-    const match = url.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
-    if (!match) return;
-    
-    const [, owner, repo, pull_number] = match;
-    setMerging(true);
-
+    setIsMerging(true);
     try {
-      // 2. Send the command to your Fastify backend
-      const response = await fetch("http://localhost:3001/approve", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const match = url.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
+      if (!match) {
+        alert("Invalid GitHub Pull Request URL.");
+        setIsMerging(false);
+        return;
+      }
+      const [, owner, repo, pull_number] = match;
+
+      // 🚨 UPDATED TO PORT 3005 🚨
+      const res = await fetch('http://localhost:3005/approve', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify({ owner, repo, pull_number })
       });
 
-      const data = await response.json();
-
-      // 3. Show the result
-      if (response.ok) {
-        alert(`🎉 PR Successfully Merged in GitHub!\n\nMessage: ${data.message}`);
+      const data = await res.json();
+      
+      if (res.ok) {
+        alert(`✅ SUCCESS: ${data.message}`);
       } else {
-        alert(`❌ GitHub Error: ${data.error}`);
+        alert(`❌ PIPELINE ERROR: ${data.error}`);
       }
     } catch (err) {
+      console.error("Action Error:", err);
       alert("Failed to reach the backend.");
     }
-    
-    setMerging(false);
-  };
-
-  const handleReject = () => {
-    alert("In the future, this will post a comment requesting changes!");
+    setIsMerging(false);
   };
 
   return (
-    <div className="mt-8 flex justify-end gap-4 border-t border-gray-800 pt-6">
+    <div className="flex gap-4 justify-end">
       <button 
-        onClick={handleReject}
-        disabled={merging}
-        className="px-6 py-2 bg-transparent border border-red-500 text-red-500 hover:bg-red-500/10 font-bold rounded-lg transition-colors disabled:opacity-50"
+        className="px-6 py-2 rounded-lg text-sm font-medium border border-[#30363d] text-gray-300 hover:bg-[#30363d] transition-colors"
+        onClick={() => alert("Change requests would be sent to GitHub review system.")}
       >
         Request Changes
       </button>
-      <button 
+      
+      <button
         onClick={handleApprove}
-        disabled={merging}
-        className="px-6 py-2 bg-green-600 hover:bg-green-500 text-white font-bold rounded-lg transition-colors shadow-lg shadow-green-900/20 disabled:opacity-50"
+        disabled={isMerging}
+        className="bg-green-600 hover:bg-green-700 disabled:bg-green-900 text-white font-medium px-6 py-2 rounded-lg text-sm transition-all transform active:scale-95 shadow-lg"
       >
-        {merging ? "Merging on GitHub..." : "Approve & Merge"}
+        {isMerging ? 'Merging on GitHub...' : 'Approve & Merge'}
       </button>
     </div>
   );
