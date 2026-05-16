@@ -1,140 +1,150 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
-// Import all your beautiful components!
-import AnimatedBackground from "@/components/AnimatedBackground";
-import DiffViewer from "@/components/DiffViewer";
-import ReviewComments from "@/components/ReviewComments";
-import ReviewActions from "@/components/ReviewActions";
+import React, { useState, useEffect, useRef } from 'react';
+import ReviewActions from '@/components/ReviewActions';
 
 export default function Home() {
-  const [url, setUrl] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [diffCode, setDiffCode] = useState("");
-  const [aiReview, setAiReview] = useState("");
+  const [url, setUrl] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [diff, setDiff] = useState('');
+  const [displayedThoughts, setDisplayedThoughts] = useState('');
+  const fullThoughtsRef = useRef('');
 
-  // ============================================================================
-  // 1. THE WALKIE-TALKIE (SSE) LISTENER
-  // ============================================================================
   useEffect(() => {
-    const eventSource = new EventSource("http://localhost:3001/sse");
+    // 1. UPDATED TO PORT 3005
+    const eventSource = new EventSource('http://localhost:3005/sse');
 
-    eventSource.addEventListener("message", (event) => {
+    eventSource.addEventListener('message', (event) => {
       try {
-        const data = JSON.parse(event.data);
-        if (data.result && data.result.content && data.result.content.length > 0) {
-          setAiReview(data.result.content[0].text);
-          setLoading(false);
+        const rawData = JSON.parse(event.data);
+        console.log("📥 Stream incoming payload:", rawData);
+
+        if (rawData.type === 'review_complete' || rawData.content) {
+          fullThoughtsRef.current = rawData.content;
+          setIsAnalyzing(false);
+          
+          let index = 0;
+          setDisplayedThoughts('');
+          const interval = setInterval(() => {
+            if (index < fullThoughtsRef.current.length) {
+              setDisplayedThoughts((prev) => prev + fullThoughtsRef.current.charAt(index));
+              index++;
+            } else {
+              clearInterval(interval);
+            }
+          }, 3); 
         }
       } catch (err) {
-        console.error("Error parsing AI message:", err);
+        console.error("❌ Failed to parse streaming line:", err);
       }
     });
 
-    return () => eventSource.close();
+    eventSource.onerror = (err) => {
+      console.error("⚠️ SSE Stream Connection dropped:", err);
+    };
+
+    return () => {
+      eventSource.close();
+    };
   }, []);
 
-  // ============================================================================
-  // 2. THE ANALYZE FUNCTION
-  // ============================================================================
-  const analyzePR = async () => {
-    setError("");
-    setDiffCode("");
-    setAiReview("");
-
-    const cleanUrl = url.trim();
-    const match = cleanUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
-
-    if (!match) {
-      setError("Invalid GitHub PR URL. Please paste a direct link to a Pull Request.");
-      return;
-    }
-
-    const [, owner, repo, pull_number] = match;
-    setLoading(true);
+  const handleAnalyze = async () => {
+    if (!url) return;
+    setIsAnalyzing(true);
+    setDiff('');
+    setDisplayedThoughts('');
+    fullThoughtsRef.current = '';
 
     try {
-      const diffResponse = await fetch(`http://localhost:3001/diff?owner=${owner}&repo=${repo}&pull_number=${pull_number}`);
-      if (!diffResponse.ok) throw new Error("Backend failed to fetch the Pull Request code.");
-      
-      const diffData = await diffResponse.json();
-      setDiffCode(diffData.diff);
+      const match = url.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
+      if (!match) {
+        alert("Invalid GitHub Pull Request URL configuration.");
+        setIsAnalyzing(false);
+        return;
+      }
+      const [, owner, repo, pull_number] = match;
 
-      const aiResponse = await fetch("http://localhost:3001/message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ method: "tools/call", params: { name: "get_pr_diff" } })
+      // 2. UPDATED TO PORT 3005
+      const diffRes = await fetch(`http://localhost:3005/diff?owner=${owner}&repo=${repo}&pull_number=${pull_number}`);
+      const diffData = await diffRes.json();
+      
+      if (diffData.diff) {
+        setDiff(diffData.diff);
+      }
+
+      // 3. UPDATED TO PORT 3005
+      await fetch('http://localhost:3005/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "tools/call",
+          params: { name: "get_pr_diff" },
+          id: 1
+        })
       });
 
-      if (!aiResponse.ok) throw new Error("Failed to wake up the AI Agent.");
-
-    } catch (err: any) {
-      setError(err.message);
-      setLoading(false);
+    } catch (err) {
+      console.error("❌ Execution pipeline failure:", err);
+      setIsAnalyzing(false);
     }
   };
 
-  // ============================================================================
-  // 3. THE MODULAR UI LAYOUT
-  // ============================================================================
   return (
-    <div className="relative min-h-screen bg-[#0B1120] text-white font-sans overflow-hidden">
-      
-      {/* Background Animation */}
-      <div className="absolute inset-0 z-0 pointer-events-none">
-        <AnimatedBackground />
-      </div>
-
-      {/* Main Container */}
-      <div className="relative z-10 p-8 max-w-7xl mx-auto">
+    <main className="min-h-screen bg-[#0d1117] text-[#c9d1d9] p-8 font-sans pb-24">
+      <div className="max-w-6xl mx-auto space-y-8">
         
-        {/* Header */}
-        <div className="text-center mt-6 mb-10">
-          <h1 className="text-5xl font-extrabold tracking-tight mb-4 text-gray-100">
-            Agentic Code Review
-          </h1>
-          <p className="text-xl text-gray-400">
-            Deploy an autonomous MCP agent to audit and fix your Pull Request.
-          </p>
+        <div className="text-center space-y-2">
+          <h1 className="text-4xl font-extrabold tracking-tight text-white">Agentic Code Review</h1>
+          <p className="text-gray-400">Deploy an autonomous MCP agent to audit and fix your Pull Request.</p>
         </div>
 
-        {/* Input Field */}
-        <div className="max-w-3xl mx-auto bg-[#0F172A] border border-gray-800 rounded-xl p-6 shadow-2xl mb-12">
-          <div className="flex gap-4">
-            <input
-              type="text"
-              placeholder="https://github.com/owner/repo/pull/123"
-              className="flex-1 bg-[#0B1120] border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-[#0EA5E9] transition-colors"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && analyzePR()}
-            />
-            <button
-              onClick={analyzePR}
-              disabled={loading}
-              className="bg-[#0EA5E9] hover:bg-[#0284C7] text-white font-bold py-3 px-8 rounded-lg transition-colors disabled:opacity-50"
-            >
-              {loading ? "Analyzing..." : "Analyze PR"}
-            </button>
-          </div>
-          {error && <p className="text-red-400 mt-4 text-sm font-medium">{error}</p>}
+        <div className="flex gap-4 max-w-2xl mx-auto bg-[#161b22] p-4 rounded-xl border border-[#30363d] shadow-2xl">
+          <input
+            type="text"
+            placeholder="Enter GitHub PR URL (e.g., https://github.com/owner/repo/pull/1)"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            className="flex-1 bg-[#0d1117] border border-[#30363d] px-4 py-2 rounded-lg text-white focus:outline-none focus:border-blue-500 text-sm"
+          />
+          <button
+            onClick={handleAnalyze}
+            disabled={isAnalyzing}
+            className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white font-medium px-6 py-2 rounded-lg text-sm transition-all transform active:scale-95"
+          >
+            {isAnalyzing ? '⚡ Auditing Code...' : 'Analyze PR'}
+          </button>
         </div>
 
-        {/* Results Grid (Powered by your modular components!) */}
-        {(diffCode || aiReview) && (
-          <div className="animate-fade-in">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <DiffViewer diffCode={diffCode} />
-              <ReviewComments aiReview={aiReview} loading={loading} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          <div className="bg-[#161b22] rounded-xl border border-[#30363d] p-6 space-y-4 shadow-lg">
+            <h2 className="text-lg font-semibold text-white border-b border-[#30363d] pb-2">PR Code Diff</h2>
+            <div className="bg-[#0d1117] rounded-lg p-4 overflow-auto h-[450px] font-mono text-xs whitespace-pre text-gray-300 border border-[#21262d]">
+              {diff || "Awaiting target codebase initialization..."}
             </div>
-            
-            {/* The Action Buttons at the bottom */}
-            <ReviewActions url={url} />
           </div>
-        )}
 
+          <div className="bg-[#161b22] rounded-xl border border-[#30363d] p-6 space-y-4 shadow-lg flex flex-col justify-between h-[530px]">
+            <div className="space-y-4 overflow-hidden flex-1 flex flex-col">
+              <h2 className="text-lg font-semibold text-white border-b border-[#30363d] pb-2 flex justify-between items-center">
+                <span>Sentinel AI Thoughts</span>
+                {isAnalyzing && <span className="text-xs text-blue-400 animate-pulse">Agent thinking...</span>}
+              </h2>
+              <div className="text-sm text-gray-300 overflow-auto flex-1 whitespace-pre-wrap font-sans pr-2">
+                {displayedThoughts || (isAnalyzing ? "🧠 Reading security matrix layers..." : "Waiting for AI Agent to begin review...")}
+              </div>
+            </div>
+
+            {displayedThoughts && !isAnalyzing && (
+              <div className="pt-4 border-t border-[#30363d] bg-[#161b22]">
+                <ReviewActions url={url} />
+              </div>
+            )}
+          </div>
+
+        </div>
       </div>
-    </div>
+    </main>
   );
 }

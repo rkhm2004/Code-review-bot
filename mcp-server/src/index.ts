@@ -3,25 +3,22 @@ import cors from '@fastify/cors';
 import { EventEmitter } from 'events';
 import 'dotenv/config';
 
-// ============================================================================
-// GLOBAL CONFIGURATION & STATE
-// ============================================================================
 const app = Fastify();
 const messageBus = new EventEmitter();
 
 let currentDiffData = "";
 let cleanAiPatchedCode = "";
+let cachedLatestAiResult: any = null;
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || "";
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
 
-// Enable CORS
 app.register(cors, { origin: true });
 
 // ============================================================================
-// SERVER-SENT EVENTS (SSE)
+// 1. SSE STREAM
 // ============================================================================
-app.get('/sse', async (req: any, res: any) => {
+app.get('/sse', (req: any, res: any) => {
   res.raw.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -29,157 +26,102 @@ app.get('/sse', async (req: any, res: any) => {
     'Access-Control-Allow-Origin': '*'
   });
 
+  console.log("📺 [SSE] Frontend connected successfully.");
   res.raw.write(`event: endpoint\ndata: /message\n\n`);
 
+  if (cachedLatestAiResult) {
+    console.log("⚡ [SSE] Sending cached AI response to newly connected frontend.");
+    res.raw.write(`event: message\ndata: ${JSON.stringify(cachedLatestAiResult)}\n\n`);
+  }
+
   const onMessage = (data: any) => {
+    console.log("📤 [SSE] Broadcasting AI response to frontend.");
     res.raw.write(`event: message\ndata: ${JSON.stringify(data)}\n\n`);
   };
 
   messageBus.on('ai_response', onMessage);
 
   req.raw.on('close', () => {
+    console.log("🔌 [SSE] Frontend disconnected.");
     messageBus.off('ai_response', onMessage);
   });
 });
 
 // ============================================================================
-// FETCH PULL REQUEST DIFF
+// 2. FETCH DIFF
 // ============================================================================
 app.get('/diff', async (req: any, res: any) => {
   try {
     const { owner, repo, pull_number } = req.query;
+    if (!owner || !repo || !pull_number) return res.status(400).send({ error: "Missing required parameters" });
 
-    if (!owner || !repo || !pull_number) {
-      return res.status(400).send({
-        error: 'Missing required parameters'
-      });
-    }
+    console.log(`\n🔍 Fetching PR diff for ${owner}/${repo} #${pull_number}`);
+    cachedLatestAiResult = null;
+    cleanAiPatchedCode = "";
 
-    console.log(
-      `🔍 Fetching PR diff for ${owner}/${repo} #${pull_number}`
-    );
-
-    const response = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/pulls/${pull_number}`,
-      {
-        headers: {
-          Accept: 'application/vnd.github.v3.diff',
-          'User-Agent': 'Sentinel-AI-Review-Bot',
-          Authorization: `Bearer ${GITHUB_TOKEN}`
-        }
+    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pull_number}`, {
+      headers: {
+        'Accept': 'application/vnd.github.v3.diff',
+        'User-Agent': 'Sentinel-AI-Review-Bot',
+        'Authorization': `Bearer ${GITHUB_TOKEN}`
       }
-    );
+    });
 
-    if (!response.ok) {
-      throw new Error(
-        `GitHub API failed with status ${response.status}`
-      );
-    }
+    if (!response.ok) throw new Error(`GitHub API failed with status ${response.status}`);
 
     const diffData = await response.text();
-
     currentDiffData = diffData;
-
-    console.log(
-      `✅ Diff downloaded successfully (${diffData.length} bytes)`
-    );
-
-    return res.send({
-      diff: diffData
-    });
-
+    console.log(`✅ Diff cached successfully (${diffData.length} bytes)`);
+    
+    return res.send({ diff: diffData });
   } catch (error: any) {
-
-    console.error(
-      '❌ FAILED TO FETCH DIFF:',
-      error.message
-    );
-
-    return res.status(500).send({
-      error: 'Failed to fetch PR diff',
-      details: error.message
-    });
+    console.error('❌ FAILED TO FETCH DIFF:', error.message);
+    return res.status(500).send({ error: error.message });
   }
 });
 
 // ============================================================================
-// GROQ AI REVIEW ENDPOINT
+// 3. GROQ AI AUDIT
 // ============================================================================
 app.post('/message', async (req: any, res: any) => {
-
   const body = req.body;
 
-  if (
-    body?.method === 'tools/call' &&
-    body?.params?.name === 'get_pr_diff'
-  ) {
-
-    console.log('🤖 Running Groq AI security audit...');
-
-    res.send({
-      status: 'processing'
-    });
+  if (body?.method === 'tools/call' && body?.params?.name === 'get_pr_diff') {
+    console.log("🤖 Initializing Groq AI security review...");
+    res.send({ status: "processing" });
 
     try {
+      if (!currentDiffData) throw new Error("No PR diff currently loaded in memory.");
 
-      if (!currentDiffData) {
-        throw new Error(
-          'No pull request diff available. Load a PR first.'
-        );
-      }
+      const groqResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${GROQ_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [
+            {
+              role: "system",
+              content: "You are an elite DevSecOps AI agent. Analyze git diffs for vulnerabilities including SQL injection, command injection, insecure dependencies, hardcoded credentials, insecure logging, and unsafe patterns. Return a detailed report followed by a secure production-ready refactored version inside a markdown code block."
+            },
+            {
+              role: "user",
+              content: `Analyze this pull request patch:\n\n${currentDiffData}`
+            }
+          ],
+          temperature: 0.2
+        })
+      });
 
-      const groqResponse = await fetch(
-        'https://api.groq.com/openai/v1/chat/completions',
-        {
-          method: 'POST',
-
-          headers: {
-            Authorization: `Bearer ${GROQ_API_KEY}`,
-            'Content-Type': 'application/json'
-          },
-
-          body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
-
-            messages: [
-              {
-                role: 'system',
-                content:
-                  'You are an elite DevSecOps AI agent. Analyze the provided git diff for vulnerabilities including SQL injection, command injection, insecure dependencies, cleartext logging, and hardcoded secrets. Then generate a secure production-ready fixed version.'
-              },
-
-              {
-                role: 'user',
-                content:
-                  `Analyze this pull request diff:\n\n${currentDiffData}`
-              }
-            ],
-
-            temperature: 0.2
-          })
-        }
-      );
-
-      if (!groqResponse.ok) {
-
-        const errPayload = await groqResponse.json();
-
-        throw new Error(
-          errPayload.error?.message || 'Groq API failed'
-        );
-      }
+      if (!groqResponse.ok) throw new Error("Groq API processing failed");
 
       const groqData = await groqResponse.json();
+      const aiMarkdownOutput = groqData?.choices?.[0]?.message?.content || "";
 
-      const aiMarkdownOutput =
-        groqData.choices?.[0]?.message?.content || "";
-
-      // ============================================================================
-      // EXTRACT CODE BLOCK
-      // ============================================================================
-
-      const codeBlockRegex = /```(?:\w+)?\n([\s\S]*?)```/;
-
+      // 🚨 FIX: Escaped the backticks so esbuild/tsx does not crash during compilation
+      const codeBlockRegex = /\`\`\`(?:\w+)?\n([\s\S]*?)\`\`\`/;
       const match = aiMarkdownOutput.match(codeBlockRegex);
 
       if (match && match[1]) {
@@ -188,50 +130,120 @@ app.post('/message', async (req: any, res: any) => {
         cleanAiPatchedCode = aiMarkdownOutput;
       }
 
-      console.log('✅ AI review completed successfully');
-
-      // Send live SSE update
-      messageBus.emit('ai_response', {
+      cachedLatestAiResult = {
         type: 'review_complete',
         content: aiMarkdownOutput,
         patchedCode: cleanAiPatchedCode
-      });
+      };
+
+      console.log("✅ AI review completed successfully.");
+      messageBus.emit('ai_response', cachedLatestAiResult);
 
     } catch (error: any) {
-
-      console.error(
-        '❌ GROQ REVIEW FAILED:',
-        error.message
-      );
-
-      messageBus.emit('ai_response', {
-        type: 'error',
-        message: error.message
-      });
+      console.error("❌ GROQ REVIEW FAILED:", error.message);
+      const errorPayload = { type: 'error', message: error.message };
+      cachedLatestAiResult = errorPayload;
+      messageBus.emit('ai_response', errorPayload);
     }
   }
-
   return;
 });
 
 // ============================================================================
-// START SERVER
+// 4. AUTONOMOUS COMMIT & MERGE (/approve)
 // ============================================================================
-const startServer = async () => {
-
+app.post('/approve', async (req: any, res: any) => {
   try {
+    const { owner, repo, pull_number } = req.body;
+    if (!owner || !repo || !pull_number) return res.status(400).send({ error: "Missing required parameters" });
+    if (!cleanAiPatchedCode) return res.status(400).send({ error: "No compiled secure patch buffered in engine memory to commit." });
 
-    await app.listen({
-      port: 3001,
-      host: '0.0.0.0'
+    console.log(`\n🚀 Stage 1: Resolving remote target branch reference details...`);
+    const prResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pull_number}`, {
+      headers: { 'Authorization': `Bearer ${GITHUB_TOKEN}` }
+    });
+    if (!prResponse.ok) throw new Error("Target Pull Request meta reference lookup failed.");
+    const prData = await prResponse.json();
+    const branchName = prData.head.ref;
+
+    console.log(`🚀 Stage 2: Acquiring active target file SHA checksum...`);
+    const fileUrl = `https://api.github.com/repos/${owner}/${repo}/contents/bad_auth.js?ref=${branchName}`;
+    const fileCheck = await fetch(fileUrl, {
+      headers: { 'Authorization': `Bearer ${GITHUB_TOKEN}` }
+    });
+    
+    let fileSha = "";
+    if (fileCheck.ok) {
+      const fileData = await fileCheck.json();
+      fileSha = fileData.sha;
+    }
+
+ console.log(`🚀 Stage 3: Injecting patched secure file onto remote branch: [${branchName}]`);
+    const commitUrl = `https://api.github.com/repos/${owner}/${repo}/contents/bad_auth.js`;
+    const commitResponse = await fetch(commitUrl, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: "Sentinel AI: Autonomously patched code vulnerabilities",
+        content: Buffer.from(cleanAiPatchedCode).toString('base64'),
+        branch: branchName,
+        sha: fileSha
+      })
     });
 
-    console.log('🚀 MCP Server running on port 3001');
+    if (!commitResponse.ok) {
+        const err = await commitResponse.json();
+        throw new Error(`File write rejected: ${err.message}`);
+    }
 
+    // 🚨 FIX: Give GitHub 2 seconds to process the new commit before trying to merge
+    console.log(`⏳ Letting GitHub process the commit (2 seconds)...`);
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    console.log(`🚀 Stage 4: Executing final codebase compile merge onto main branch...`);
+    const mergeResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pull_number}/merge`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json'
+      },
+      body: JSON.stringify({
+        commit_title: `🛡️ Sentinel AI: Merged verified secure code patch from PR #${pull_number}`,
+        merge_method: 'merge'
+      })
+    });
+
+    if (!mergeResponse.ok) {
+        // 🚨 FIX: Print the EXACT reason GitHub is rejecting the merge
+        const err = await mergeResponse.json();
+        throw new Error(`GitHub rejected merge: ${err.message}`);
+    }
+
+    console.log("✅ AGENT LIFE CYCLE COMPLETE: PIPELINE EXECUTION SUCCESSFUL!");
+    return res.send({ success: true, message: "Sentinel AI successfully modified your file and merged the patch into main!" });
+
+  } catch (error: any) {
+    console.error('❌ CRITICAL REJECTION ENCOUNTERED:', error.message);
+    return res.status(500).send({ error: error.message });
+  }
+});
+
+// ============================================================================
+// 5. BOOTSTRAP APPARATUS
+// ============================================================================
+const startServer = async () => {
+  try {
+    await app.listen({ port: 3005, host: '0.0.0.0' });
+    console.log('\n=========================================');
+    console.log("🚀 SENTINEL AI BACKEND IS ALIVE NATIVELY!");
+    console.log("📡 Listening on http://localhost:3005");
+    console.log('=========================================\n');
   } catch (error) {
-
-    console.error('❌ SERVER FAILED TO START:', error);
-
+    console.error("❌ SERVER START FAILED:", error);
     process.exit(1);
   }
 };
