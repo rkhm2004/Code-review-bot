@@ -39,6 +39,44 @@ class AnalysisRequest(BaseModel):
     use_local_llm: bool = True
 
 
+class ValidationRequest(BaseModel):
+    source_code: str = Field(default="", max_length=300_000)
+    language: str = "auto"
+
+
+def validate_source(req: ValidationRequest) -> dict[str, Any]:
+    language = req.language.lower()
+    source = req.source_code
+    if not source.strip():
+        return {"validated": False, "method": "input-check", "message": "No source code supplied."}
+
+    if language == "python":
+        import ast
+        try:
+            ast.parse(source)
+            return {"validated": True, "method": "python-ast", "message": "Python syntax parsed successfully."}
+        except SyntaxError as exc:
+            return {"validated": False, "method": "python-ast", "message": f"Python syntax error at line {exc.lineno}: {exc.msg}"}
+
+    # Lightweight validation for languages whose compiler/toolchain is not bundled.
+    pairs = {"(": ")", "[": "]", "{": "}"}
+    stack: list[str] = []
+    for char in source:
+        if char in pairs:
+            stack.append(pairs[char])
+        elif char in pairs.values():
+            if not stack or stack.pop() != char:
+                return {"validated": False, "method": "balanced-delimiters", "message": "Unbalanced delimiters detected."}
+    if stack:
+        return {"validated": False, "method": "balanced-delimiters", "message": "Unbalanced delimiters detected."}
+
+    return {
+        "validated": True,
+        "method": "static-sanity-check",
+        "message": "Basic source validation passed. Use the project compiler/static analyzer for language-level validation."
+    }
+
+
 class DispositionRequest(BaseModel):
     finding_id: str
     status: str
@@ -322,3 +360,8 @@ def disposition(req: DispositionRequest) -> dict[str, Any]:
         "reviewer_note": req.reviewer_note,
         "message": "Human reviewer disposition recorded. No automatic merge was performed."
     }
+
+
+@app.post("/validate")
+def validate(req: ValidationRequest) -> dict[str, Any]:
+    return validate_source(req)
