@@ -4,19 +4,24 @@ services:
       context: .
       dockerfile: analysis-service/Dockerfile
     container_name: cs4-analysis
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     environment:
       - OLLAMA_URL=http://host.docker.internal:11434
       - OLLAMA_MODEL=llama3.2:3b
       - RAG_MODEL=sentence-transformers/all-MiniLM-L6-v2
       - RAG_DATA_DIR=/app/data/rag
       - AUDIT_DB_PATH=/app/data/cs4_audit.sqlite3
+      - CS4_AUDIT_ENCRYPTION_KEY=${CS4_AUDIT_ENCRYPTION_KEY}
       - HF_HOME=/app/data/huggingface
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - cs4_data:/app/data
+    networks:
+      - cs4_private
+    security_opt:
+      - no-new-privileges:true
 
   backend:
     build:
@@ -25,13 +30,24 @@ services:
     ports:
       - "3001:3001"
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
       - PORT=3001
       - ANALYSIS_SERVICE_URL=http://analysis-service:8000
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - ALLOWED_REPOSITORIES=${ALLOWED_REPOSITORIES:-}
+      - CS4_AUTH_SECRET=${CS4_AUTH_SECRET}
+      - CS4_AUTH_TTL_SECONDS=${CS4_AUTH_TTL_SECONDS:-3600}
+      - CS4_ADMIN_USERNAME=${CS4_ADMIN_USERNAME:-admin}
+      - CS4_ADMIN_PASSWORD=${CS4_ADMIN_PASSWORD}
+      - CS4_ADMIN_SALT=${CS4_ADMIN_SALT:-}
+      - CS4_USERS_JSON=${CS4_USERS_JSON:-[]}
     depends_on:
       - analysis-service
+    networks:
+      - cs4_private
+      - cs4_edge
+    security_opt:
+      - no-new-privileges:true
 
   frontend:
     build:
@@ -40,10 +56,19 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=http://localhost:3001
     depends_on:
       - backend
+    networks:
+      - cs4_edge
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  cs4_private:
+    internal: true
+  cs4_edge:
 
 volumes:
   cs4_data:
