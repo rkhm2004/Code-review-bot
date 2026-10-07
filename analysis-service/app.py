@@ -200,6 +200,29 @@ def parse_static_evidence(report: str) -> list[dict[str, Any]]:
     return findings[:20]
 
 
+def parse_runtime_evidence(log: str) -> list[dict[str, Any]]:
+    if not log.strip():
+        return []
+    findings: list[dict[str, Any]] = []
+    for i, line in enumerate(log.splitlines(), 1):
+        if re.search(r"\\b(segmentation fault|segfault|panic|exception|traceback|fatal|crash|assert(?:ion)? failed|runtime error)\\b", line, re.I):
+            severity = "HIGH" if re.search(r"segmentation fault|segfault|panic|fatal|crash", line, re.I) else "MEDIUM"
+            findings.append({
+                "id": f"RUNTIME-{i:03d}",
+                "category": "Runtime Evidence",
+                "severity": severity,
+                "title": "Runtime failure evidence",
+                "description": "A runtime failure or exception was supplied as evidence.",
+                "file": "runtime_log",
+                "line": i,
+                "evidence": line.strip()[:500],
+                "recommendation": "Trace the failure to the affected code path, reproduce it, and validate the remediation with tests.",
+                "rule_id": "CS4-ENG-001",
+                "confidence": 0.93,
+                "status": "NEEDS_REVIEW"
+            })
+    return findings[:20]
+
 def code_structure(source: str, language: str) -> dict[str, Any]:
     if language in {"python", "javascript", "typescript", "java"}:
         fn_rx = r"(?m)^\s*(?:async\s+)?(?:function\s+)?([A-Za-z_$][\w$]*)\s*\([^\n]*\)\s*(?:\{|:)"
@@ -336,6 +359,7 @@ def analyze(req: AnalysisRequest) -> dict[str, Any]:
     findings = heuristic_findings(req.source_code, language)
     findings.extend(parse_compiler_evidence(req.compiler_log))
     findings.extend(parse_static_evidence(req.static_analysis))
+    findings.extend(parse_runtime_evidence(req.runtime_log))
 
     # Preserve deterministic IDs and cap output for predictable UI rendering.
     for idx, item in enumerate(findings, 1):
