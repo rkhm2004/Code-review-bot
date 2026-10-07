@@ -9,6 +9,12 @@ let currentReview: any = null;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || "";
 const ANALYSIS_SERVICE_URL = process.env.ANALYSIS_SERVICE_URL || "http://analysis-service:8000";
 const PORT = Number(process.env.PORT || 3001);
+const ALLOWED_REPOSITORIES = (process.env.ALLOWED_REPOSITORIES || "").split(",").map(v => v.trim()).filter(Boolean);
+
+function repositoryAllowed(owner: string, repo: string): boolean {
+  if (!ALLOWED_REPOSITORIES.length) return true;
+  return ALLOWED_REPOSITORIES.includes(`${owner}/${repo}`);
+}
 
 app.register(cors, { origin: true });
 
