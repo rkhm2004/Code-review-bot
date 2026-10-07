@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api";
+
 import { useState } from "react";
 
 type Finding = {
@@ -28,14 +30,14 @@ export default function ReviewActions({ findings, sourceCode, language, filePath
     setMessage("");
     try {
       if (status === "ACCEPTED") {
-        const validation = await fetch(API_URL + "/validate", {
+        const validation = await apiFetch("/validate", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ source_code: sourceCode, language, file_path: filePath }),
         });
         const validationData = await validation.json();
         if (!validation.ok || !validationData.validated) throw new Error(validationData.message || "Source validation failed. Do not accept yet.");
       }
-      const response = await fetch(API_URL + "/disposition", {
+      const response = await apiFetch("/disposition", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           finding_id: finding.id, status, reviewer_id: REVIEWER_ID,
