@@ -205,7 +205,7 @@ def parse_runtime_evidence(log: str) -> list[dict[str, Any]]:
         return []
     findings: list[dict[str, Any]] = []
     for i, line in enumerate(log.splitlines(), 1):
-        if re.search(r"\\b(segmentation fault|segfault|panic|exception|traceback|fatal|crash|assert(?:ion)? failed|runtime error)\\b", line, re.I):
+        if re.search(r"\b(segmentation fault|segfault|panic|exception|traceback|fatal|crash|assert(?:ion)? failed|runtime(?:error|[_ -]error))\b", line, re.I):
             severity = "HIGH" if re.search(r"segmentation fault|segfault|panic|fatal|crash", line, re.I) else "MEDIUM"
             findings.append({
                 "id": f"RUNTIME-{i:03d}",
