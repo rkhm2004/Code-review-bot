@@ -29,10 +29,15 @@ function configuredUsers(): Array<{ username: string; passwordHash: string; salt
   const raw = process.env.CS4_USERS_JSON || "[]";
   try {
     const users = JSON.parse(raw);
-    return Array.isArray(users) ? users : [];
-  } catch {
-    return [];
+    if (Array.isArray(users) && users.length) return users;
+  } catch {}
+  const username = process.env.CS4_ADMIN_USERNAME || "admin";
+  const password = process.env.CS4_ADMIN_PASSWORD || "";
+  if (password) {
+    const salt = process.env.CS4_ADMIN_SALT || crypto.createHash("sha256").update(username + SECRET).digest("hex").slice(0, 32);
+    return [{ username, passwordHash: passwordHash(password, salt), salt, role: "ADMIN" as Role }];
   }
+  return [];
 }
 
 export function passwordHash(password: string, salt: string): string {
