@@ -76,6 +76,7 @@ app.get("/diff", async (req: any, reply) => {
     if (!owner || !repo || !pull_number) {
       return reply.code(400).send({ error: "owner, repo and pull_number are required" });
     }
+    if (!repositoryAllowed(String(owner), String(repo))) return reply.code(403).send({ error: "Repository is not authorized for this deployment." });
 
     const response = await fetch(
       `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${encodeURIComponent(pull_number)}`,
@@ -99,6 +100,8 @@ app.get("/file", async (req: any, reply) => {
     if (!owner || !repo || !path) {
       return reply.code(400).send({ error: "owner, repo and path are required" });
     }
+    if (!repositoryAllowed(String(owner), String(repo))) return reply.code(403).send({ error: "Repository is not authorized for this deployment." });
+    if (String(path).includes("..")) return reply.code(400).send({ error: "Parent-path traversal is not allowed." });
     const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${String(path).split("/").map(encodeURIComponent).join("/")}${ref ? `?ref=${encodeURIComponent(ref)}` : ""}`;
     const response = await fetch(url, { headers: githubHeaders() });
     const data: any = await response.json();
