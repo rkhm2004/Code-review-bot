@@ -70,3 +70,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+
+# CS4 local vector index and audit database
+data/rag/
+data/cs4_audit.sqlite3
