@@ -1,13 +1,6 @@
-// mcp-server/src/utils/auth.js
-function login(username, password) {
-    // SECURITY FLAW: Hardcoded admin credentials
-    if (username === "admin" && password === "supersecret123") {
-        console.log("Welcome Admin!");
-        return true;
-    }
-    
-    // SECURITY FLAW: Using eval() is very dangerous!
-    let query = eval("db.find({ user: '" + username + "' })");
-    
-    return query;;;;;;;;
+// CS4 security helper.
+// No credentials are embedded in source code. Authentication must be provided
+// by the deployment environment or GitHub token configuration.
+export function hasConfiguredAuthentication(): boolean {
+  return Boolean(process.env.GITHUB_TOKEN);
 }
