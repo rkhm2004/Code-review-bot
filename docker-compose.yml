@@ -1,25 +1,39 @@
 services:
+  analysis-service:
+    build:
+      context: .
+      dockerfile: analysis-service/Dockerfile
+    container_name: cs4-analysis
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_URL=http://host.docker.internal:11434
+      - OLLAMA_MODEL=llama3.2:3b
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
   backend:
-    build: 
+    build:
       context: ./mcp-server
-    container_name: sentinel-backend
+    container_name: cs4-backend
     ports:
       - "3001:3001"
-    # Comment out these volumes so Docker is forced to read the new index.ts!
-    # volumes:
-    #   - ./mcp-server:/app
-    #   - /app/node_modules
     environment:
       - NODE_ENV=development
+      - PORT=3001
+      - ANALYSIS_SERVICE_URL=http://analysis-service:8000
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    depends_on:
+      - analysis-service
 
   frontend:
-    build: 
+    build:
       context: ./frontend
-    container_name: sentinel-frontend
+    container_name: cs4-frontend
     ports:
       - "3000:3000"
-    # volumes:
-    #   - ./frontend:/app
-    #   - /app/node_modules
     environment:
       - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:3001
+    depends_on:
+      - backend
