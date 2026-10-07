@@ -1,46 +1,31 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
-export interface PRRequest {
-  owner: string;
-  repo: string;
-  pull_number: number;
+export interface AnalysisRequest {
+  source_code: string;
+  language: string;
+  file_path: string;
+  compiler_log?: string;
+  static_analysis?: string;
+  runtime_log?: string;
 }
 
 export const api = {
-  /**
-   * Triggers the AI to start analyzing a Pull Request.
-   */
-  async startReview(details: PRRequest) {
-    const response = await fetch(`${API_BASE_URL}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: Date.now(),
-        method: "tools/call",
-        params: {
-          name: "get_pr_diff",
-          arguments: details
-        }
-      }),
+  async analyze(request: AnalysisRequest) {
+    const response = await fetch(`${API_BASE_URL}/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
     });
-
-    if (!response.ok) {
-      throw new Error(`Failed to start review: ${response.statusText}`);
-    }
-
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Analysis failed");
+    return data;
+  },
+  async disposition(findingId: string, status: string, reviewerNote = "") {
+    const response = await fetch(`${API_BASE_URL}/disposition`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ finding_id: findingId, status, reviewer_note: reviewerNote }),
+    });
     return response.json();
   },
-
-  /**
-   * Health check for the MCP Backend
-   */
-  async checkHealth() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/sse`);
-      return res.ok;
-    } catch {
-      return false;
-    }
-  }
 };
