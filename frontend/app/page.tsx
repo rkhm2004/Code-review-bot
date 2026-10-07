@@ -14,9 +14,9 @@ export default function Home() {
         <p className="text-lg text-cyan-100/80">
           Evidence-driven code understanding, secure-coding review, MISRA-oriented guidance and human-controlled findings.
         </p>
-        <button onClick={() => router.push("/dashboard")}
+        <button onClick={() => router.push("/login")}
           className="px-8 py-4 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-full">
-          Open Review Workspace
+          Sign In to Review Workspace
         </button>
       </div>
     </main>
