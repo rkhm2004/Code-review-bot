@@ -69,3 +69,13 @@ def test_disposition_is_audited():
     assert response.status_code == 200
     events = client.get("/audit?limit=10").json()["events"]
     assert any(e["finding_id"] == "TEST-AUDIT" and e["status"] == "ACCEPTED" for e in events)
+
+
+def test_runtime_evidence():
+    response = client.post("/analyze", json={
+        "source_code": "int main() { return 0; }",
+        "language": "c",
+        "runtime_log": "RuntimeError: buffer access failed"
+    })
+    assert response.status_code == 200
+    assert any(f["category"] == "Runtime Evidence" for f in response.json()["findings"])
