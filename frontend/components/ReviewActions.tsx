@@ -22,6 +22,8 @@ export default function ReviewActions({ findings, sourceCode, language, filePath
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const role = currentUser()?.role as string | undefined;
+  const canDispose = role === "ADMIN" || role === "REVIEWER";
 
   const dispose = async (finding: Finding, status: "ACCEPTED" | "REJECTED" | "EDITED") => {
     setBusy(finding.id + status);
@@ -54,14 +56,12 @@ export default function ReviewActions({ findings, sourceCode, language, filePath
   return (
     <section className="bg-[#0d1117]/95 border border-green-500/20 rounded-xl p-5">
       <h2 className="font-mono text-green-300">Human Review & Disposition</h2>
-      <p className="text-xs text-gray-400 mt-1">AI cannot merge or release code. Validate the evidence and test any proposed change first.</p>
+      <p className="text-xs text-gray-400 mt-1">AI cannot merge or release code. Validate the evidence and test any proposed change first. Role: {role || "unknown"}.</p>
       <div className="mt-4 space-y-2">
         {findings.map((finding) => (
           <div key={finding.id} className="flex flex-wrap items-center gap-2 border-b border-gray-800 pb-2">
             <span className="text-sm text-gray-300 flex-1">{finding.id} · {finding.title}</span>
-            <button disabled={!!busy} onClick={() => dispose(finding, "ACCEPTED")} className="px-3 py-1 rounded bg-green-700/60 text-xs disabled:opacity-50">Accept</button>
-            <button disabled={!!busy} onClick={() => dispose(finding, "EDITED")} className="px-3 py-1 rounded bg-cyan-700/60 text-xs disabled:opacity-50">Edit/Validate</button>
-            <button disabled={!!busy} onClick={() => dispose(finding, "REJECTED")} className="px-3 py-1 rounded bg-red-700/60 text-xs disabled:opacity-50">Reject</button>
+            {canDispose ? <><button disabled={!!busy} onClick={() => dispose(finding, "ACCEPTED")} className="px-3 py-1 rounded bg-green-700/60 text-xs disabled:opacity-50">Accept</button><button disabled={!!busy} onClick={() => dispose(finding, "EDITED")} className="px-3 py-1 rounded bg-cyan-700/60 text-xs disabled:opacity-50">Edit/Validate</button><button disabled={!!busy} onClick={() => dispose(finding, "REJECTED")} className="px-3 py-1 rounded bg-red-700/60 text-xs disabled:opacity-50">Reject</button></> : <span className="text-xs text-gray-500">Read-only reviewer controls for this role.</span>}
           </div>
         ))}
       </div>
