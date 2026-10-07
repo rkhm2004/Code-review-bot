@@ -82,10 +82,8 @@ export default function Dashboard() {
         const match = prUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
         if (!match) throw new Error("Invalid GitHub Pull Request URL.");
         const [, owner, repo, pull_number] = match;
-        const diffRes = await fetch(`/api-placeholder`);
-        void diffRes;
         const backendDiff = await fetch(
-          `http://localhost:3001/diff?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}&pull_number=${pull_number}`
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/diff?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}&pull_number=${pull_number}`
         );
         const diffData = await backendDiff.json();
         if (!backendDiff.ok) throw new Error(diffData.error || "Unable to fetch PR diff.");
@@ -95,7 +93,7 @@ export default function Dashboard() {
 
       if (!code.trim()) throw new Error("Provide source code or a GitHub PR URL.");
 
-      const response = await fetch("http://localhost:3001/analyze", {
+      const response = await fetch("${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
