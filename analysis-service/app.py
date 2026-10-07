@@ -139,10 +139,10 @@ def code_structure(source: str, language: str) -> dict[str, Any]:
     functions = sorted(set(re.findall(fn_rx, source)))[:100]
     imports = re.findall(r"(?m)^\s*(?:import|from|require\(|#include)\s+[^\n]+", source)
     controls = {
-        "if": len(re.findall(r"\bif\s*\(", source)),
-        "for": len(re.findall(r"\bfor\s*\(", source)),
-        "while": len(re.findall(r"\bwhile\s*\(", source)),
-        "switch": len(re.findall(r"\bswitch\s*\(", source)),
+        "if": len(re.findall(r"\bif\b", source)),
+        "for": len(re.findall(r"\bfor\b", source)),
+        "while": len(re.findall(r"\bwhile\b", source)),
+        "switch": len(re.findall(r"\bswitch\b", source)),
     }
     return {
         "language": language,
@@ -172,7 +172,7 @@ def heuristic_findings(source: str, language: str) -> list[dict[str, Any]]:
         ("SEC", "Security", "HIGH", "Possible hardcoded credential or secret",
          "A credential-like value appears directly in source code.",
          "Move secrets to protected configuration or secret management.",
-         r"(password|passwd|api[_-]?key|secret|token)\s*[=:]\s*["'][^"']+["']",
+         r'(password|passwd|api[_-]?key|secret|token)\s*[=:]\s*["][^"]+["]',
          "CS4-SEC-001"),
         ("SEC", "Security", "HIGH", "Potential command injection surface",
          "The code uses command execution patterns that may become unsafe with untrusted input.",
@@ -182,7 +182,7 @@ def heuristic_findings(source: str, language: str) -> list[dict[str, Any]]:
         ("SEC", "Security", "HIGH", "Potential SQL injection pattern",
          "A query appears to be constructed from interpolated or concatenated input.",
          "Use parameterized queries and validate external input.",
-         r"(SELECT|INSERT|UPDATE|DELETE).*(\+|\$\{|f["']|%s)",
+         r'(SELECT|INSERT|UPDATE|DELETE).*(\+|\$\{|%s)',
          "CS4-SEC-003"),
         ("MISRA", "MISRA-oriented", "HIGH", "Unsafe C string operation",
          "An unsafe or unbounded C string function was detected.",
