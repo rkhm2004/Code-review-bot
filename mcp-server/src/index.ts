@@ -147,6 +147,18 @@ app.post("/validate", async (req: any, reply) => {
   }
 });
 
+app.get("/audit", async (req: any, reply) => {
+  try {
+    const query = req.query || {};
+    const limit = encodeURIComponent(String(query.limit || "100"));
+    const response = await fetch(`${ANALYSIS_SERVICE_URL}/audit?limit=${limit}`);
+    return reply.code(response.status).send(await response.json());
+  } catch (error: any) {
+    return reply.code(503).send({ error: error.message || "Audit service unavailable" });
+  }
+});
+
+
 app.post("/disposition", async (req: any, reply) => {
   try {
     const response = await fetch(`${ANALYSIS_SERVICE_URL}/disposition`, {
