@@ -23,6 +23,7 @@ services:
       - PORT=3001
       - ANALYSIS_SERVICE_URL=http://analysis-service:8000
       - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - ALLOWED_REPOSITORIES=${ALLOWED_REPOSITORIES:-}
     depends_on:
       - analysis-service
 
