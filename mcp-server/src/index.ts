@@ -86,6 +86,25 @@ app.get("/diff", async (req: any, reply) => {
   }
 });
 
+
+app.get("/file", async (req: any, reply) => {
+  try {
+    const { owner, repo, path, ref } = req.query || {};
+    if (!owner || !repo || !path) {
+      return reply.code(400).send({ error: "owner, repo and path are required" });
+    }
+    const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${String(path).split("/").map(encodeURIComponent).join("/")}${ref ? `?ref=${encodeURIComponent(ref)}` : ""}`;
+    const response = await fetch(url, { headers: githubHeaders() });
+    const data: any = await response.json();
+    if (!response.ok) return reply.code(response.status).send({ error: data.message || "GitHub file retrieval failed" });
+    if (!data.content) return reply.code(400).send({ error: "Selected path is not a text file." });
+    const source = Buffer.from(String(data.content).replace(/\n/g, ""), "base64").toString("utf8");
+    return reply.send({ path, ref: ref || "default", content: source });
+  } catch (error: any) {
+    return reply.code(500).send({ error: error.message || "Failed to retrieve repository file" });
+  }
+});
+
 app.post("/analyze", async (req: any, reply) => {
   try {
     const response = await fetch(`${ANALYSIS_SERVICE_URL}/analyze`, {
