@@ -211,7 +211,7 @@ export default function Dashboard() {
                 <h2 className="font-mono text-cyan-300 mb-3">Code Understanding</h2>
                 <p className="text-sm text-gray-300">{analysis.code_structure.module_summary}</p>
                 <p className="text-xs text-gray-500 mt-3">Functions: {analysis.code_structure.functions.join(", ") || "None detected"}</p>
-                <pre className="text-xs text-gray-500 mt-3">{JSON.stringify(analysis.code_structure.control_flow_counts, null, 2)}</pre>
+                <p className="text-xs text-gray-400 mt-3">Dependencies: {analysis.code_structure.dependencies?.join(", ") || "None detected"}</p><p className="text-xs text-gray-400 mt-2">Calls: {analysis.code_structure.call_dependencies?.slice(0, 12).join(", ") || "None detected"}</p><p className="text-xs text-gray-400 mt-2">{analysis.code_structure.control_flow_summary}</p><pre className="text-xs text-gray-500 mt-3">{JSON.stringify(analysis.code_structure.control_flow_counts, null, 2)}</pre>
               </div>
               <div className="bg-[#0d1117]/90 border border-[#30363d] rounded-xl p-5">
                 <h2 className="font-mono text-cyan-300 mb-3">Retrieved Guidance</h2>
@@ -272,7 +272,7 @@ function FindingCard({ finding }: { finding: Finding }) {
         <pre className="text-xs text-red-200 whitespace-pre-wrap">{finding.evidence}</pre>
       </div>
       {finding.rule_id && <p className="text-xs text-cyan-300">Guidance: {finding.rule_id}</p>}
-      <p className="text-sm text-green-300"><b>Recommendation:</b> {finding.recommendation}</p>
+      <p className="text-sm text-amber-200"><b>Root cause:</b> {finding.root_cause || "Not determined; reviewer validation required."}</p><p className="text-sm text-green-300"><b>Recommendation:</b> {finding.recommendation}</p>
       <p className="text-xs text-gray-500">Status: {finding.status} · Human validation required before acceptance.</p>
     </article>
   );
