@@ -139,8 +139,10 @@ export default function Dashboard() {
             <h1 className="text-3xl md:text-4xl font-black text-white">Secure Code Debugging & Review Assistant</h1>
             <p className="text-sm text-gray-400 mt-2">Local evidence-driven analysis with human reviewer control.</p>
           </div>
-          <div className="px-3 py-2 rounded border border-green-500/30 bg-green-500/5 text-green-300 text-xs font-mono">
-            AUTO-MERGE: DISABLED
+          <div className="flex items-center gap-3">
+            <div className="px-3 py-2 rounded border border-green-500/30 bg-green-500/5 text-green-300 text-xs font-mono">AUTO-MERGE: DISABLED</div>
+            <div className="text-xs text-gray-400">{user?.username} · {user?.role}</div>
+            <button onClick={logout} className="text-xs px-3 py-2 rounded border border-gray-700">Sign out</button>
           </div>
         </header>
 
