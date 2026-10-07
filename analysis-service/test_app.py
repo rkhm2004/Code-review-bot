@@ -48,3 +48,24 @@ def test_no_automatic_merge():
     })
     assert response.status_code == 200
     assert response.json()["success"] is True
+
+
+def test_auto_language_detection():
+    response = client.post("/analyze", json={
+        "source_code": 'function login(user) { return fetch("/login?user=" + user); }',
+        "language": "auto",
+        "file_path": "submitted_code"
+    })
+    assert response.status_code == 200
+    assert response.json()["code_structure"]["language"] == "javascript"
+
+
+def test_disposition_is_audited():
+    response = client.post("/disposition", json={
+        "finding_id": "TEST-AUDIT",
+        "status": "ACCEPTED",
+        "reviewer_note": "Audit test"
+    })
+    assert response.status_code == 200
+    events = client.get("/audit?limit=10").json()["events"]
+    assert any(e["finding_id"] == "TEST-AUDIT" and e["status"] == "ACCEPTED" for e in events)
