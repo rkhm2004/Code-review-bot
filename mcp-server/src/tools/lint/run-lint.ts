@@ -1,43 +1,42 @@
-import { server } from "../../server/mcp.js"; // Fixes "Cannot find name 'server'"
+import { server } from "../../server/mcp.js";
 import { z } from "zod";
-import { exec } from "node:child_process"; // Using node: prefix for 2026 standards
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
 
-const execAsync = promisify(exec);
+interface LintArgs { target_path: string; }
 
-// Use an interface to fix the 'any' error for the tool arguments
-interface LintArgs {
-  target_path: string;
+function safeTarget(value: string): string {
+  const target = value.trim();
+  if (!target || target.startsWith("-") || target.includes("..") || new RegExp("[;&|$<>]").test(target)) {
+    throw new Error("Unsafe lint target path.");
+  }
+  return target;
 }
 
 server.tool(
-  "run_lint", 
-  "Runs ESLint on a specific file or directory to find syntax/style errors", 
-  { 
-    target_path: z.string().describe("The file or directory path to lint (e.g., src/index.ts)") 
-  }, 
+  "run_lint",
+  "Runs ESLint on an approved relative path without shell interpolation.",
+  { target_path: z.string().describe("Approved relative file or directory path") },
   async ({ target_path }: LintArgs) => {
     try {
-      // Run the linter command
-      const { stdout } = await execAsync(`npx eslint ${target_path}`);
-      
-      return { 
-        content: [{ 
-          type: "text", 
-          text: `Linting passed successfully:\n${stdout || "No issues found."}` 
-        }] 
-      };
+      const target = safeTarget(target_path);
+      const output = await new Promise<string>((resolve, reject) => {
+        const child = spawn("npx", ["eslint", "--no-error-on-unmatched-pattern", target], {
+          shell: false,
+          cwd: process.cwd(),
+        });
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", chunk => { stdout += chunk.toString(); });
+        child.stderr.on("data", chunk => { stderr += chunk.toString(); });
+        child.on("error", reject);
+        child.on("close", code => {
+          const text = stdout || stderr || "No issues found.";
+          resolve(code && code !== 0 ? `Linting found issues:\n\n${text}` : `Linting passed:\n${text}`);
+        });
+      });
+      return { content: [{ type: "text", text: output }] };
     } catch (error: any) {
-      // Linters exit with a non-zero code when errors are found.
-      // We capture stdout/stderr to give the AI the actual linting report.
-      const lintOutput = error.stdout || error.stderr || error.message;
-      
-      return { 
-        content: [{ 
-          type: "text", 
-          text: `Linting found issues that need to be addressed:\n\n${lintOutput}` 
-        }] 
-      };
+      return { content: [{ type: "text", text: `Linting failed safely: ${error.message}` }], isError: true };
     }
   }
 );
