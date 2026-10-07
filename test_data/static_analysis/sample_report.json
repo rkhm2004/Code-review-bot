@@ -1,0 +1,7 @@
+{
+  "tool": "sample-static-analyzer",
+  "findings": [
+    {"severity": "high", "rule": "BUFFER-001", "message": "Possible buffer overflow"},
+    {"severity": "warning", "rule": "STYLE-002", "message": "Unchecked return value"}
+  ]
+}
