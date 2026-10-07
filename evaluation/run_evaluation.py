@@ -27,6 +27,7 @@ def main() -> None:
     hit1 = hit3 = hit5 = 0
     rr_total = 0.0
     retrieval_cases = 0
+    retrieval_failures = 0
 
     for case in cases:
         findings = heuristic_findings(case["source"], case["language"])
@@ -44,7 +45,13 @@ def main() -> None:
         if expected:
             retrieval_cases += 1
             try:
-                results = retrieve_guidance(case["source"], top_k=5)
+                # Mirror production review context without leaking expected labels.
+                retrieval_query = (
+                    f"Language: {case['language']}\n"
+                    f"Code under review:\n{case['source']}\n"
+                    "Secure coding and MISRA-oriented review guidance."
+                )
+                results = retrieve_guidance(retrieval_query, top_k=5)
                 ranked = [r.get("id") for r in results]
                 first_rank = next((i + 1 for i, rid in enumerate(ranked) if rid in expected), None)
                 if first_rank:
@@ -53,7 +60,7 @@ def main() -> None:
                     if first_rank <= 3: hit3 += 1
                     if first_rank <= 5: hit5 += 1
             except Exception:
-                pass
+                retrieval_failures += 1
 
     precision = tp / (tp + fp) if tp + fp else 0.0
     recall = tp / (tp + fn) if tp + fn else 0.0
@@ -75,8 +82,9 @@ def main() -> None:
             "hit_at_3": round(hit3 / retrieval_cases, 4) if retrieval_cases else 0.0,
             "hit_at_5": round(hit5 / retrieval_cases, 4) if retrieval_cases else 0.0,
             "mrr": round(rr_total / retrieval_cases, 4) if retrieval_cases else 0.0,
+            "retrieval_failures": retrieval_failures,
         },
-        "methodology": "Deterministic rule IDs are scored against expected labels. Retrieval is scored by the rank of an expected guidance rule in the local FAISS top-k results.",
+        "methodology": "Deterministic rule IDs are scored against expected labels. Retrieval is scored by the rank of an expected guidance rule in the local FAISS top-k results using the same source/language review context as production, without including expected labels in the query.",
     }
     OUTPUT.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
     print(json.dumps(metrics, indent=2))
