@@ -1,130 +1,238 @@
-# CS4 Secure Code Debugging & Review Assistant
+# CS4 — Secure Code Debugging & Review Assistant
 
-This branch adapts the original code-review application for **Case Study 4: Secure Code Debugging and Review Assistant**.
+This repository implements Case Study 4 as a local/private, evidence-driven code debugging and security review assistant.
 
-## What this version implements
-
-- Repository/PR-aware code retrieval through GitHub.
-- Source-code review with structured findings.
-- Code understanding: language, functions, imports/includes and basic control-flow summary.
-- Compiler/build-log evidence analysis.
-- Static-analysis evidence analysis.
-- Runtime-log input.
-- Local RAG over approved coding/security guidance using Sentence Transformers embeddings + FAISS.
-- Retrieval evidence includes source and semantic similarity score.
-- MISRA-oriented guidance summaries and secure-coding recommendations.
-- Evidence, severity, confidence and finding status for every reported issue.
-- Prompt-injection protection: repository content is treated as untrusted evidence.
-- Human disposition workflow: Accept, Edit/Validate or Reject.
-- Automatic commit/merge is deliberately disabled.
-- Optional local LLM integration through Ollama; the deterministic local rule/analysis layer still works when Ollama is unavailable.
-- Docker Compose deployment with separate frontend, gateway and local analysis service.
-
-## Architecture
+## Final architecture
 
 ```text
-User
-  |
-  v
-Next.js CS4 Dashboard
-  |
-  v
+Authenticated User
+      |
+      v
+Next.js Dashboard  <---- Login / RBAC role
+      |
+      v
 Fastify Review Gateway
-  |---------------------> GitHub PR / Diff Retrieval
-  |
+  |        |        |
+  |        |        +--> Report / Metrics
+  |        +-----------> GitHub PR/Diff (authorized repositories only)
   v
+Private Docker Network
+      |
+      v
 Local Python Analysis Service
   |
-  +--> Code structure analysis
-  +--> Compiler/static-analysis/log evidence
-  +--> Sentence-Transformer embeddings
-  +--> Local FAISS vector retrieval over approved guidance
-  +--> Optional Ollama local LLM
-  +--> SQLite audit/disposition store
+  +--> Language + syntax validation
+  +--> Function/module/dependency analysis
+  +--> Control-flow analysis
+  +--> Compiler / static-analysis / runtime evidence
+  +--> Deterministic secure/MISRA-oriented rules
+  +--> Local Sentence-Transformer embeddings
+  +--> FAISS RAG
+  |      +--> approved guidance
+  |      +--> historical ACCEPTED findings
+  |          (sanitized metadata only)
+  +--> Optional local Ollama LLM
+  +--> Encrypted SQLite audit/disposition store
   |
   v
-Structured Findings + Retrieval Evidence
-  |
-  +--> Evidence + line
-  +--> Severity
-  +--> Confidence
-  +--> Rule reference
-  +--> Recommendation
-  +--> Status
+Structured Findings
+  +--> evidence / file / line
+  +--> severity / confidence
+  +--> root-cause hypothesis
+  +--> rule reference
+  +--> remediation
+  +--> status
   |
   v
-Human Reviewer
-  |
+Qualified Human Reviewer
   +--> Accept
   +--> Edit/Validate
   +--> Reject
+  |
+  +--> approved finding becomes eligible historical RAG knowledge
 ```
 
-## Local LLM
+Automatic merge/release approval is disabled.
 
-The analysis service can call a locally running Ollama instance using:
+## Implemented CS4 requirements
 
-- `OLLAMA_URL`
-- `OLLAMA_MODEL`
+### 1. Authentication and RBAC
 
-Example:
+The gateway uses signed bearer tokens and role-based permissions.
+
+- ADMIN: analyze, validate, disposition, audit, report
+- REVIEWER: analyze, validate, disposition, audit, report
+- DEVELOPER: analyze, validate, report
+- AUDITOR: audit, report
+
+The dashboard has an authentication screen. Operational API endpoints reject unauthenticated requests.
+
+### 2. Repository-aware retrieval and authorization
+
+GitHub PR/diff/file retrieval is preserved. Repository access is restricted by `ALLOWED_REPOSITORIES`, and parent-path traversal is rejected.
+
+### 3. Code understanding
+
+The analysis service reports:
+
+- detected language
+- line count
+- functions and function ranges
+- imports/includes
+- dependency statements
+- call dependencies
+- control-flow counts
+- estimated nesting/indentation depth
+- module summary
+
+### 4. Evidence-driven debugging
+
+The service accepts:
+
+- source code
+- compiler/build logs
+- static-analysis output
+- runtime logs
+
+Findings include evidence, severity, confidence, root-cause hypothesis, recommendation and status.
+
+### 5. Local/private RAG
+
+RAG uses Sentence Transformers + FAISS locally.
+
+The corpus contains:
+
+1. approved CS4/MISRA-oriented/security guidance
+2. historical findings that were explicitly accepted by a human reviewer
+
+Historical entries are sanitized. Source-code bodies and source snippets are never persisted for RAG.
+
+### 6. Human oversight and audit
+
+Acceptance requires source validation first. Dispositions are written to SQLite audit storage.
+
+Automatic merge is blocked.
+
+Reviewer notes and structured audit details can be encrypted with `CS4_AUDIT_ENCRYPTION_KEY`.
+
+### 7. Formal evaluation
+
+The versioned evaluation set is:
+
+- `evaluation/dataset.jsonl`
+
+The evaluation runner computes:
+
+- detection precision
+- detection recall
+- detection F1
+- severity accuracy
+- retrieval Hit@1
+- retrieval Hit@3
+- retrieval Hit@5
+- retrieval MRR
+
+Run:
+
+```bash
+python evaluation/run_evaluation.py
+```
+
+The resulting `evaluation/metrics.json` is the reproducible evaluation artifact.
+
+### 8. Dedicated report export
+
+The analysis service exposes `POST /report` through the authenticated gateway.
+
+The dashboard provides **Export Markdown Report**, producing a structured review report containing:
+
+- status and finding counts
+- code/dependency understanding
+- control-flow summary
+- evidence
+- root-cause hypotheses
+- recommendations
+- governance status
+
+### 9. Deployment security
+
+Docker Compose separates:
+
+- `cs4_edge`: frontend + gateway
+- `cs4_private`: gateway + analysis service
+
+The analysis service is not published to the host.
+
+See `SECURITY_DEPLOYMENT.md` for authentication, secrets, encryption, network isolation and repository authorization controls.
+
+## Configuration
+
+Copy `.env.example` to `.env` and set real values.
+
+Required production controls:
 
 ```text
-OLLAMA_URL=http://localhost:11434
-OLLAMA_MODEL=llama3.2:3b
+GITHUB_TOKEN=...
+ALLOWED_REPOSITORIES=owner/repository
+CS4_AUTH_SECRET=at-least-32-random-characters
+CS4_ADMIN_USERNAME=admin
+CS4_ADMIN_PASSWORD=strong-password
+CS4_AUDIT_ENCRYPTION_KEY=...
 ```
 
-The application does not use the previous external Groq review path on this branch.
+For multiple roles, configure `CS4_USERS_JSON` with scrypt password verifiers.
+
+Never commit secrets.
 
 ## Run
 
-### 1. Configure GitHub access
-
-Set `GITHUB_TOKEN` in your environment. Do not commit secrets.
-
-### 2. Start
-
 ```bash
-docker compose up --build
+docker compose build
+docker compose up -d
+docker compose ps
 ```
 
-Frontend: `http://localhost:3000`
+Services:
 
-Gateway: `http://localhost:3001`
+- Dashboard: http://localhost:3000
+- Gateway: http://localhost:3001
+- Analysis service: private Docker network only
 
-Analysis service: `http://localhost:8000`
+Open the dashboard and sign in before running analysis.
 
-### 3. Optional local model
+## Core review flow
 
-Install/run Ollama on the host and pull the model configured in `OLLAMA_MODEL`. If Ollama is unavailable, the local deterministic analysis and rule retrieval continue to work.
+1. Authenticate.
+2. Select authorized repository/PR or paste source.
+3. Supply compiler, static-analysis or runtime evidence when available.
+4. Run local analysis.
+5. Inspect code structure, dependencies, control flow and RAG guidance.
+6. Review evidence-based findings and root-cause hypotheses.
+7. Validate source before accepting a finding.
+8. Accept/Edit/Validate/Reject.
+9. Accepted findings become eligible historical RAG knowledge.
+10. Export the formal review report.
 
-## Requirements
+## Privacy and governance
 
-Python dependencies for the local analysis service are listed in the root `requirements.txt`.
+Source code is processed locally by the analysis service. The audit database does not persist source-code bodies or snippets. Repository content is treated as untrusted evidence and cannot override the review policy.
 
-Node dependencies remain in:
+AI output is advisory. Qualified engineering reviewers remain responsible for compliance, design and release decisions.
 
-- `mcp-server/package.json`
-- `frontend/package.json`
+## Evaluation and demo evidence
 
-## Governance
+Keep the final submission evidence focused on:
 
-This implementation intentionally does **not** automatically modify or merge a repository after an AI finding. Findings require qualified human review and validation before acceptance.
+- authenticated login and role
+- authorized repository retrieval
+- local FAISS retrieval
+- finding evidence and confidence
+- dependency/control-flow summary
+- compiler/static/runtime evidence
+- human disposition
+- historical approved-finding retrieval
+- evaluation metrics
+- exported report
+- network/security controls
 
-Repository source, comments and logs are treated as untrusted input and must not override the system review policy.
-
-## Project status
-
-The `cs4` branch is the implementation branch for the Case Study 4 code work. Submission packaging, evaluation artifacts, screenshots, video and declarations will be prepared separately after the code implementation is validated.
-
-## CS4 reference-aligned storage
-
-The reference case study explicitly calls for Retrieval-Augmented Generation with local vector storage and identifies SQLite/PostgreSQL as the structured-storage option for reviews, approvals and audit data. This implementation uses **FAISS + Sentence Transformers** for local guidance retrieval and **SQLite** for local review/audit events. Source code itself is not written to the audit database.
-
-## RAG configuration
-
-- RAG_MODEL=sentence-transformers/all-MiniLM-L6-v2
-- RAG_DATA_DIR=/app/data/rag
-- AUDIT_DB_PATH=/app/data/cs4_audit.sqlite3
-
-The first analysis request builds the local FAISS index from `knowledge_base/rules.json`. Subsequent requests reuse the persisted index unless the knowledge base changes.
+Submission packaging should be created only after the final implementation is tested.
