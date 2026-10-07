@@ -301,6 +301,10 @@ def analyze(req: AnalysisRequest) -> dict[str, Any]:
     for idx, item in enumerate(findings, 1):
         item["id"] = item.get("id") or f"F-{idx:03d}"
 
+    for item in findings:
+        if item.get("file") == "submitted_code":
+            item["file"] = req.file_path
+
     structure = code_structure(req.source_code, language)
     runtime_lines = len(req.runtime_log.splitlines()) if req.runtime_log.strip() else 0
 
