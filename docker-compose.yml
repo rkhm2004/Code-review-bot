@@ -12,6 +12,7 @@ services:
       - RAG_MODEL=sentence-transformers/all-MiniLM-L6-v2
       - RAG_DATA_DIR=/app/data/rag
       - AUDIT_DB_PATH=/app/data/cs4_audit.sqlite3
+      - HF_HOME=/app/data/huggingface
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
