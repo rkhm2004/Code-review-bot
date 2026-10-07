@@ -93,7 +93,7 @@ export default function Dashboard() {
 
       if (!code.trim()) throw new Error("Provide source code or a GitHub PR URL.");
 
-      const response = await fetch("${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/analyze", {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
