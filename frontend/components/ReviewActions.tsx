@@ -4,7 +4,7 @@ import { useState } from "react";
 
 type Finding = { id: string; title: string; status: string };
 
-export default function ReviewActions({ findings, sourceCode, language }: { findings: Finding[]; sourceCode: string; language: string }) {
+export default function ReviewActions({ findings, sourceCode, language, filePath }: { findings: Finding[]; sourceCode: string; language: string; filePath: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState("");
 
@@ -16,7 +16,7 @@ export default function ReviewActions({ findings, sourceCode, language }: { find
         const validation = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/validate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ source_code: sourceCode, language })
+          body: JSON.stringify({ source_code: sourceCode, language, file_path: filePath })
         });
         const validationData = await validation.json();
         if (!validation.ok || !validationData.validated) {
