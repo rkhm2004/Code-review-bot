@@ -225,7 +225,7 @@ export default function Dashboard() {
               {analysis.findings.map(f => <FindingCard key={f.id} finding={f} />)}
             </section>
 
-            <ReviewActions findings={analysis.findings} sourceCode={sourceCode} language={language} />
+            <ReviewActions findings={analysis.findings} sourceCode={sourceCode} language={language} filePath={filePath} />
           </>
         )}
       </div>
