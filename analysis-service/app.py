@@ -6,6 +6,14 @@ import re
 import urllib.request
 from pathlib import Path
 from typing import Any
+import sys
+
+SERVICE_DIR = Path(__file__).resolve().parent
+if str(SERVICE_DIR) not in sys.path:
+    sys.path.insert(0, str(SERVICE_DIR))
+
+from audit import init_db, recent_events, record_event
+from rag import rag_health, retrieve_guidance
 
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
@@ -18,6 +26,7 @@ app = FastAPI(
 
 ROOT = Path(__file__).resolve().parent.parent
 RULES_PATH = ROOT / "knowledge_base" / "rules.json"
+init_db()
 
 try:
     RULES: list[dict[str, Any]] = json.loads(RULES_PATH.read_text(encoding="utf-8"))
@@ -42,11 +51,14 @@ class AnalysisRequest(BaseModel):
 class ValidationRequest(BaseModel):
     source_code: str = Field(default="", max_length=300_000)
     language: str = "auto"
+    file_path: str = "submitted_code"
 
 
 def validate_source(req: ValidationRequest) -> dict[str, Any]:
     language = req.language.lower()
     source = req.source_code
+    if language == "auto":
+        language = detect_language(source, req.file_path)
     if not source.strip():
         return {"validated": False, "method": "input-check", "message": "No source code supplied."}
 
@@ -81,17 +93,36 @@ class DispositionRequest(BaseModel):
     finding_id: str
     status: str
     reviewer_note: str = ""
+    reviewer_id: str = "local-reviewer"
+
+
+def detect_language(source: str, file_path: str = "") -> str:
+    suffix = Path(file_path).suffix.lower()
+    by_suffix = {
+        ".py": "python", ".js": "javascript", ".jsx": "javascript",
+        ".ts": "typescript", ".tsx": "typescript", ".java": "java",
+        ".c": "c", ".h": "c", ".cpp": "cpp", ".cc": "cpp",
+        ".hpp": "cpp",
+    }
+    if suffix in by_suffix:
+        return by_suffix[suffix]
+
+    sample = source[:12000]
+    if re.search(r"(?m)^\s*(?:const|let|var)\s+|\bfunction\s+[A-Za-z_$]\w*\s*\(|=>\s*\{|\bfetch\s*\(", sample):
+        return "javascript"
+    if re.search(r"(?m)^\s*(?:async\s+)?def\s+[A-Za-z_]\w*\s*\(|^\s*(?:from|import)\s+\w+|\bprint\s*\(", sample):
+        return "python"
+    if re.search(r"#include\s*[<\"]|\bint\s+main\s*\(|\bprintf\s*\(", sample):
+        return "c"
+    if re.search(r"\bpublic\s+(?:static\s+)?(?:class|interface)\b|System\.out\.println", sample):
+        return "java"
+    return "text"
 
 
 def language_of(req: AnalysisRequest) -> str:
     if req.language != "auto":
         return req.language.lower()
-    suffix = Path(req.file_path).suffix.lower()
-    return {
-        ".py": "python", ".js": "javascript", ".ts": "typescript",
-        ".java": "java", ".c": "c", ".h": "c", ".cpp": "cpp",
-        ".cc": "cpp", ".hpp": "cpp"
-    }.get(suffix, "text")
+    return detect_language(req.source_code, req.file_path)
 
 
 def line_evidence(source: str, pattern: str) -> tuple[int, str]:
@@ -283,7 +314,9 @@ def health() -> dict[str, Any]:
         "service": "cs4-analysis",
         "local_llm_configured": bool(OLLAMA_URL),
         "model": OLLAMA_MODEL if OLLAMA_URL else None,
-        "rules_loaded": len(RULES)
+        "rules_loaded": len(RULES),
+        "rag": rag_health(),
+        "audit_store": "sqlite"
     }
 
 
@@ -291,7 +324,14 @@ def health() -> dict[str, Any]:
 def analyze(req: AnalysisRequest) -> dict[str, Any]:
     language = language_of(req)
     combined = "\n".join([req.source_code, req.compiler_log, req.static_analysis, req.runtime_log])
-    rules = local_rule_retrieval(combined)
+    try:
+        rules = retrieve_guidance(combined, top_k=5)
+        rag_mode = "faiss_sentence_transformers"
+    except Exception:
+        # Deterministic keyword retrieval remains a safe local fallback if the
+        # embedding model is unavailable during development.
+        rules = local_rule_retrieval(combined)
+        rag_mode = "keyword_fallback"
 
     findings = heuristic_findings(req.source_code, language)
     findings.extend(parse_compiler_evidence(req.compiler_log))
@@ -329,12 +369,30 @@ def analyze(req: AnalysisRequest) -> dict[str, Any]:
         "external_source_code_transmission": False,
     }
 
+    record_event(
+        "ANALYSIS_COMPLETED",
+        file_path=req.file_path,
+        details={
+            "language": language,
+            "finding_count": len(findings),
+            "high_count": summary["high_count"],
+            "medium_count": summary["medium_count"],
+            "low_count": summary["low_count"],
+            "rag_mode": rag_mode,
+        },
+    )
+
     return {
         "case_study": "CS4",
-        "analysis_mode": "local_rules_and_optional_local_llm",
+        "analysis_mode": f"local_rag_{rag_mode}_and_optional_local_llm",
         "summary": summary,
         "code_structure": structure,
         "retrieved_rules": rules,
+        "retrieval": {
+            "method": rag_mode,
+            "source": "knowledge_base/rules.json",
+            "local_only": True,
+        },
         "findings": findings[:50],
         "evidence": {
             "compiler_log_lines": len(req.compiler_log.splitlines()),
@@ -357,11 +415,19 @@ def disposition(req: DispositionRequest) -> dict[str, Any]:
     status = req.status.upper()
     if status not in allowed:
         return {"success": False, "error": f"Invalid status. Use one of: {', '.join(sorted(allowed))}"}
+    record_event(
+        "REVIEW_DISPOSITION",
+        finding_id=req.finding_id,
+        status=status,
+        reviewer_id=req.reviewer_id,
+        reviewer_note=req.reviewer_note,
+    )
     return {
         "success": True,
         "finding_id": req.finding_id,
         "status": status,
         "reviewer_note": req.reviewer_note,
+        "reviewer_id": req.reviewer_id,
         "message": "Human reviewer disposition recorded. No automatic merge was performed."
     }
 
@@ -369,3 +435,13 @@ def disposition(req: DispositionRequest) -> dict[str, Any]:
 @app.post("/validate")
 def validate(req: ValidationRequest) -> dict[str, Any]:
     return validate_source(req)
+
+
+@app.get("/audit")
+def audit(limit: int = 100) -> dict[str, Any]:
+    return {
+        "count": len(recent_events(limit)),
+        "events": recent_events(limit),
+        "source_code_persisted": False,
+        "store": "sqlite",
+    }
