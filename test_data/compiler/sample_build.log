@@ -1,0 +1,2 @@
+auth.c:42:10: warning: comparison between signed and unsigned integer expressions
+auth.c:57:5: error: implicit declaration of function 'strcpy'
