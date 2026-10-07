@@ -36,7 +36,8 @@ type Analysis = {
     module_summary: string;
     control_flow_counts: Record<string, number>;
   };
-  retrieved_rules: { id: string; category: string; title: string; guidance: string }[];
+  retrieved_rules: { id: string; category: string; title: string; guidance: string; retrieval_score?: number; retrieval_method?: string; source?: string }[];
+  retrieval?: { method: string; source: string; local_only: boolean };
   findings: Finding[];
   evidence: {
     compiler_log_lines: number;
@@ -189,6 +190,7 @@ export default function Dashboard() {
               <div className="panel"><span>FINDINGS</span><b>{analysis.summary.finding_count}</b></div>
               {findingCounts.map(([name, count]) => <div className="panel" key={name}><span>{name}</span><b>{count}</b></div>)}
               <div className="panel"><span>LANGUAGE</span><b>{analysis.code_structure.language}</b></div>
+              <div className="panel"><span>RAG</span><b>{analysis.retrieval?.method === "faiss_sentence_transformers" ? "FAISS + Embeddings" : analysis.retrieval?.method || "local"}</b></div>
             </section>
 
             <section className="grid lg:grid-cols-2 gap-5">
@@ -206,6 +208,7 @@ export default function Dashboard() {
                       <p className="text-xs text-cyan-400">{rule.id} · {rule.category}</p>
                       <p className="text-sm text-white">{rule.title}</p>
                       <p className="text-xs text-gray-400 mt-1">{rule.guidance}</p>
+                      {rule.retrieval_score !== undefined && <p className="text-[10px] text-gray-500 mt-2">Semantic score: {rule.retrieval_score} · {rule.source || "local knowledge base"}</p>}
                     </div>
                   ))}
                 </div>
