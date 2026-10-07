@@ -105,6 +105,20 @@ app.post("/analyze", async (req: any, reply) => {
   }
 });
 
+
+app.post("/validate", async (req: any, reply) => {
+  try {
+    const response = await fetch(`${ANALYSIS_SERVICE_URL}/validate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body || {}),
+    });
+    return reply.code(response.status).send(await response.json());
+  } catch (error: any) {
+    return reply.code(503).send({ error: error.message || "Validation service unavailable" });
+  }
+});
+
 app.post("/disposition", async (req: any, reply) => {
   try {
     const response = await fetch(`${ANALYSIS_SERVICE_URL}/disposition`, {
