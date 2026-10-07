@@ -10,7 +10,8 @@ This branch adapts the original code-review application for **Case Study 4: Secu
 - Compiler/build-log evidence analysis.
 - Static-analysis evidence analysis.
 - Runtime-log input.
-- Local rule retrieval from an approved coding/security knowledge base.
+- Local RAG over approved coding/security guidance using Sentence Transformers embeddings + FAISS.
+- Retrieval evidence includes source and semantic similarity score.
 - MISRA-oriented guidance summaries and secure-coding recommendations.
 - Evidence, severity, confidence and finding status for every reported issue.
 - Prompt-injection protection: repository content is treated as untrusted evidence.
@@ -36,11 +37,13 @@ Local Python Analysis Service
   |
   +--> Code structure analysis
   +--> Compiler/static-analysis/log evidence
-  +--> Local coding/security rule retrieval
+  +--> Sentence-Transformer embeddings
+  +--> Local FAISS vector retrieval over approved guidance
   +--> Optional Ollama local LLM
+  +--> SQLite audit/disposition store
   |
   v
-Structured Findings
+Structured Findings + Retrieval Evidence
   |
   +--> Evidence + line
   +--> Severity
@@ -113,3 +116,15 @@ Repository source, comments and logs are treated as untrusted input and must not
 ## Project status
 
 The `cs4` branch is the implementation branch for the Case Study 4 code work. Submission packaging, evaluation artifacts, screenshots, video and declarations will be prepared separately after the code implementation is validated.
+
+## CS4 reference-aligned storage
+
+The reference case study explicitly calls for Retrieval-Augmented Generation with local vector storage and identifies SQLite/PostgreSQL as the structured-storage option for reviews, approvals and audit data. This implementation uses **FAISS + Sentence Transformers** for local guidance retrieval and **SQLite** for local review/audit events. Source code itself is not written to the audit database.
+
+## RAG configuration
+
+- RAG_MODEL=sentence-transformers/all-MiniLM-L6-v2
+- RAG_DATA_DIR=/app/data/rag
+- AUDIT_DB_PATH=/app/data/cs4_audit.sqlite3
+
+The first analysis request builds the local FAISS index from `knowledge_base/rules.json`. Subsequent requests reuse the persisted index unless the knowledge base changes.
