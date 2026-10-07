@@ -1,8 +1,7 @@
 "use client";
 
-import { apiFetch } from "@/lib/api";
-
 import { useState } from "react";
+import { apiFetch, currentUser } from "@/lib/api";
 
 type Finding = {
   id: string;
@@ -16,8 +15,7 @@ type Finding = {
   status: string;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-const REVIEWER_ID = "local-reviewer";
+
 
 export default function ReviewActions({ findings, sourceCode, language, filePath, repository = "" }: {
   findings: Finding[]; sourceCode: string; language: string; filePath: string; repository?: string;
@@ -40,7 +38,7 @@ export default function ReviewActions({ findings, sourceCode, language, filePath
       const response = await apiFetch("/disposition", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          finding_id: finding.id, status, reviewer_id: REVIEWER_ID,
+          finding_id: finding.id, status, reviewer_id: currentUser()?.username || "authenticated-reviewer",
           reviewer_note: "Disposition recorded by qualified human reviewer.",
           file_path: filePath, repository, finding,
         }),
