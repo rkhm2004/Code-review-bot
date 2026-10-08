@@ -245,7 +245,13 @@ export default function Dashboard() {
               {analysis.findings.map(f => <FindingCard key={f.id} finding={f} />)}
             </section>
 
-            <ReviewActions findings={analysis.findings} sourceCode={sourceCode} language={language} filePath={filePath} repository={prUrl ? (() => { const m = prUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/\d+/); return m ? m[1] + "/" + m[2] : ""; })() : ""} />
+            <ReviewActions
+              findings={analysis.findings}
+              sourceCode={sourceCode || diff}
+              language={language}
+              filePath={filePath}
+              repository={getRepositoryFromPrUrl(prUrl)}
+            />
             <section className="bg-[#0d1117]/90 border border-cyan-500/20 rounded-xl p-5 flex flex-wrap gap-3 items-center"><span className="font-mono text-cyan-300 text-sm">Operational metrics</span><span className="text-xs text-gray-400">Analyses: {metrics?.analyses ?? "—"}</span><span className="text-xs text-gray-400">Findings: {metrics?.findings_reported ?? "—"}</span><span className="text-xs text-gray-400">Accepted: {metrics?.accepted_findings ?? "—"}</span><button onClick={async () => { const r = await apiFetch("/report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ analysis, file_path: filePath }) }); const d = await r.json(); if (!r.ok) { setError(d.error || "Report export failed."); return; } const blob = new Blob([d.content], { type: "text/markdown" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = d.filename || "cs4-review-report.md"; a.click(); URL.revokeObjectURL(url); }} className="ml-auto px-3 py-2 rounded bg-cyan-700/60 text-xs">Export Markdown Report</button></section>
           </>
         )}
