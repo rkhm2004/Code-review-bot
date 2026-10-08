@@ -479,6 +479,32 @@ def report(payload: dict[str, Any]) -> dict[str, Any]:
     summary = analysis.get("summary", {})
     structure = analysis.get("code_structure", {})
     findings = analysis.get("findings", [])
+
+    # Overlay the latest human dispositions so exported reports cannot show a
+    # stale NEEDS_REVIEW status after a reviewer has accepted/edited/rejected
+    # a finding in the UI.
+    disposition_events = {
+        event["finding_id"]: event
+        for event in recent_events(500)
+        if event.get("event_type") == "REVIEW_DISPOSITION"
+        and event.get("finding_id")
+        and (
+            not payload.get("repository")
+            or not event.get("repository")
+            or event.get("repository") == payload.get("repository")
+        )
+        and (
+            not payload.get("file_path")
+            or not event.get("file_path")
+            or event.get("file_path") == payload.get("file_path")
+        )
+    }
+    findings = [
+        {**item, "status": disposition_events[item.get("id")].get("status", item.get("status", "NEEDS_REVIEW"))}
+        if item.get("id") in disposition_events else item
+        for item in findings
+    ]
+
     lines = [
         "# CS4 Secure Code Review Report", "",
         f"- Status: {summary.get('status', 'UNKNOWN')}",
