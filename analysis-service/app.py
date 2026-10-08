@@ -60,6 +60,9 @@ class DispositionRequest(BaseModel):
     repository: str = ""
     finding: dict[str, Any] = Field(default_factory=dict)
 
+# Resolve postponed annotations explicitly for Pydantic/FastAPI across supported versions.
+DispositionRequest.model_rebuild()
+
 
 def detect_language(source: str, file_path: str = "") -> str:
     suffix = Path(file_path).suffix.lower()
