@@ -15,6 +15,7 @@ type Finding = {
   line: number;
   evidence: string;
   recommendation: string;
+  root_cause?: string | null;
   rule_id?: string | null;
   confidence: number;
   status: string;
@@ -34,8 +35,11 @@ type Analysis = {
     lines: number;
     function_count: number;
     functions: string[];
+    dependencies?: string[];
+    call_dependencies?: string[];
     module_summary: string;
     control_flow_counts: Record<string, number>;
+    control_flow_summary?: string;
   };
   retrieved_rules: { id: string; category: string; title: string; guidance: string; retrieval_score?: number; retrieval_method?: string; source?: string }[];
   retrieval?: { method: string; source: string; local_only: boolean };
