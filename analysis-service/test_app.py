@@ -120,3 +120,17 @@ def test_invalid_disposition_status_is_rejected():
     })
     assert response.status_code == 200
     assert response.json()["success"] is False
+
+
+def test_structured_static_evidence_preserves_message():
+    response = client.post("/analyze", json={
+        "source_code": "import os\nos.system(user_input)",
+        "language": "python",
+        "static_analysis": '[{"rule":"CS4-SEC-002","severity":"HIGH","message":"Command injection detected","file":"demo/security_test.py","line":4}]',
+    })
+    assert response.status_code == 200
+    finding = next(f for f in response.json()["findings"] if f["category"] == "Static Analysis")
+    assert finding["severity"] == "HIGH"
+    assert finding["description"] == "Command injection detected"
+    assert finding["file"] == "demo/security_test.py"
+    assert finding["line"] == 4
