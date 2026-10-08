@@ -199,20 +199,68 @@ def parse_compiler_evidence(log: str) -> list[dict[str, Any]]:
 def parse_static_evidence(report: str) -> list[dict[str, Any]]:
     if not report.strip():
         return []
+
+    findings: list[dict[str, Any]] = []
+
+    # Prefer structured static-analysis reports so the reviewer sees the
+    # complete finding instead of an arbitrary line such as '"severity": "HIGH"'.
     try:
-        text = json.dumps(json.loads(report), indent=2)
-    except Exception:
-        text = report
-    findings = []
-    for i, line in enumerate(text.splitlines(), 1):
+        parsed = json.loads(report)
+        records = parsed if isinstance(parsed, list) else [parsed] if isinstance(parsed, dict) else []
+        structured = [item for item in records if isinstance(item, dict)]
+
+        if structured:
+            for index, item in enumerate(structured[:20], 1):
+                raw_severity = str(item.get("severity", item.get("level", "MEDIUM"))).upper()
+                severity = "HIGH" if raw_severity in {"CRITICAL", "HIGH", "ERROR"} else "LOW" if raw_severity == "LOW" else "MEDIUM"
+                message = str(item.get("message") or item.get("description") or item.get("rule") or "Static-analysis finding")
+                file_name = str(item.get("file") or item.get("path") or "static_analysis")
+                try:
+                    line_number = max(1, int(item.get("line", 1)))
+                except (TypeError, ValueError):
+                    line_number = 1
+
+                evidence = json.dumps(item, ensure_ascii=False, separators=(", ", ": "))[:500]
+                findings.append({
+                    "id": f"STATIC-{index:03d}",
+                    "category": "Static Analysis",
+                    "severity": severity,
+                    "title": "Static-analysis finding",
+                    "description": message,
+                    "file": file_name,
+                    "line": line_number,
+                    "evidence": evidence,
+                    "recommendation": "Correlate this finding with the affected source location.",
+                    "root_cause": "The static analyzer reported a rule violation or suspicious program pattern.",
+                    "rule_id": str(item.get("rule_id") or item.get("rule") or "CS4-ENG-001"),
+                    "confidence": 0.94,
+                    "status": "NEEDS_REVIEW",
+                })
+            return findings
+
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
+
+    # Fallback for plain-text static-analysis output.
+    for index, line in enumerate(report.splitlines(), 1):
         if re.search(r"\b(error|critical|high|warning|medium)\b", line, re.I):
             severity = "HIGH" if re.search(r"critical|high|error", line, re.I) else "MEDIUM"
-            findings.append({"id": f"STATIC-{i:03d}", "category": "Static Analysis", "severity": severity,
-                "title": "Static-analysis finding", "description": "A static-analysis finding was supplied as evidence.",
-                "file": "static_analysis", "line": i, "evidence": line.strip()[:500],
+            findings.append({
+                "id": f"STATIC-{index:03d}",
+                "category": "Static Analysis",
+                "severity": severity,
+                "title": "Static-analysis finding",
+                "description": "A static-analysis finding was supplied as evidence.",
+                "file": "static_analysis",
+                "line": index,
+                "evidence": line.strip()[:500],
                 "recommendation": "Correlate this finding with the affected source location.",
                 "root_cause": "The static analyzer reported a rule violation or suspicious program pattern.",
-                "rule_id": "CS4-ENG-001", "confidence": 0.94, "status": "NEEDS_REVIEW"})
+                "rule_id": "CS4-ENG-001",
+                "confidence": 0.94,
+                "status": "NEEDS_REVIEW",
+            })
+
     return findings[:20]
 
 
