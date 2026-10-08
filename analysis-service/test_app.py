@@ -134,3 +134,27 @@ def test_structured_static_evidence_preserves_message():
     assert finding["description"] == "Command injection detected"
     assert finding["file"] == "demo/security_test.py"
     assert finding["line"] == 4
+
+
+def test_report_reflects_latest_human_disposition():
+    report = client.post("/report", json={
+        "repository": "rkhm2004/Code-review-bot",
+        "file_path": "submitted_code",
+        "analysis": {
+            "summary": {"status": "NEEDS_REVIEW", "finding_count": 1},
+            "code_structure": {"language": "python"},
+            "findings": [{
+                "id": "REPORT-ACCEPT-001",
+                "title": "Test finding",
+                "severity": "HIGH",
+                "confidence": 0.9,
+                "file": "submitted_code",
+                "line": 1,
+                "root_cause": "Test",
+                "recommendation": "Test",
+                "status": "NEEDS_REVIEW",
+            }],
+        },
+    })
+    assert report.status_code == 200
+    assert "REPORT-ACCEPT-001 — Test finding" in report.json()["content"]
