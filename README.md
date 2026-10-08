@@ -167,7 +167,7 @@ See `SECURITY_DEPLOYMENT.md` for authentication, secrets, encryption, network is
 
 ## Configuration
 
-Copy `.env.example` to `.env` and set real values.
+Create a local `.env` file and set real values. Do not commit `.env` or any secret-bearing configuration.
 
 Required production controls:
 

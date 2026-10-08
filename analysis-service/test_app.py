@@ -79,3 +79,58 @@ def test_runtime_evidence():
     })
     assert response.status_code == 200
     assert any(f["category"] == "Runtime Evidence" for f in response.json()["findings"])
+
+
+def test_unified_diff_validation_and_structure():
+    diff = """diff --git a/demo/security_test.py b/demo/security_test.py
+index 1111111..2222222 100644
+--- a/demo/security_test.py
++++ b/demo/security_test.py
+@@ -1,2 +1,5 @@
+ import os
+ 
++def run_command(user_input):
++    os.system("ping " + user_input)
+"""
+    validation = client.post("/validate", json={
+        "source_code": diff,
+        "language": "auto",
+        "file_path": "PR-8-diff",
+    })
+    assert validation.status_code == 200
+    assert validation.json()["validated"] is True
+    assert validation.json()["method"] == "git-diff-structure"
+
+    analysis = client.post("/analyze", json={
+        "source_code": diff,
+        "language": "auto",
+        "file_path": "PR-8-diff",
+    })
+    assert analysis.status_code == 200
+    data = analysis.json()
+    assert data["code_structure"]["source_kind"] == "git_unified_diff"
+    assert "run_command" in data["code_structure"]["functions"]
+    assert any(f["rule_id"] == "CS4-SEC-002" for f in data["findings"])
+
+
+def test_invalid_disposition_status_is_rejected():
+    response = client.post("/disposition", json={
+        "finding_id": "TEST-INVALID",
+        "status": "NOT_A_REAL_STATUS",
+    })
+    assert response.status_code == 200
+    assert response.json()["success"] is False
+
+
+def test_structured_static_evidence_preserves_message():
+    response = client.post("/analyze", json={
+        "source_code": "import os\nos.system(user_input)",
+        "language": "python",
+        "static_analysis": '[{"rule":"CS4-SEC-002","severity":"HIGH","message":"Command injection detected","file":"demo/security_test.py","line":4}]',
+    })
+    assert response.status_code == 200
+    finding = next(f for f in response.json()["findings"] if f["category"] == "Static Analysis")
+    assert finding["severity"] == "HIGH"
+    assert finding["description"] == "Command injection detected"
+    assert finding["file"] == "demo/security_test.py"
+    assert finding["line"] == 4
